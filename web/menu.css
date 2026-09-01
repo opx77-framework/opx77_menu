@@ -1,0 +1,429 @@
+/* opx77_menu -- the strip. Every value comes from open77-ui.css; the one
+ */
+
+/* Night City yellow, as an accent-role override rather than a literal at each use
+   site: --op77-ink is the text ON this fill. */
+:root {
+  --op77-accent:      #fcee0a;
+  --op77-accent-ice:  #fff761;
+  --op77-accent-deep: #d4c500;
+  --op77-accent-soft: rgba(252, 238, 10, 0.13);
+  --op77-accent-line: rgba(252, 238, 10, 0.45);
+  --op77-ink:         #0a0a05;
+  --op77-glow: 0 0 24px rgba(252, 238, 10, 0.22);
+}
+
+* { box-sizing: border-box; }
+
+html {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+}
+
+/* `opacity` must stay on body alone and never join a `html, body` group:
+   `html { opacity: 0 }` composites the whole document into one transparent
+   layer that `body.open` cannot undo, and getComputedStyle reports a healthy 1
+   on the body throughout. This class is the surface's only visibility
+   authority -- it is created visible and never hidden. */
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+  font-family: var(--op77-font-body);
+  color: var(--op77-text);
+  pointer-events: none;
+  user-select: none;
+  opacity: 0;
+  transition: opacity var(--op77-dur) var(--op77-ease);
+}
+
+body.open { opacity: 1; }
+
+.strip {
+  position: fixed;
+
+  /* How far the diagonal travels across a plate, and how far the selected one
+     leaves the column. Both are flipped by the anchor rules. */
+  --cut: 20px;
+  --pop: 18px;
+
+  /* `--op77-shadow` restated as a filter: `clip-path` cuts a box-shadow off with
+     the box, so the plates need a shadow that follows the cut shape. */
+  --plate-shadow: drop-shadow(0 8px 28px rgba(0, 0, 0, 0.55));
+
+  width: var(--strip-width, 340px);
+  max-width: calc(100vw - var(--op77-inset-x) * 2);
+  max-height: var(--strip-max-height, 56vh);
+  display: flex;
+  flex-direction: column;
+  /* The gap is what makes these separate plates rather than a bordered list. */
+  gap: var(--op77-space-1);
+  background: none;
+  border: 0;
+  /* `visible` is load-bearing: the selected plate slides OUT of this box. */
+  overflow: visible;
+  /* Pins the stacking context the plates depend on. Each plate is a
+     `z-index: -1` pseudo-element, and without a context here that negative
+     index escapes upward to the root. */
+  isolation: isolate;
+  transform: translateX(var(--slide, 10px));
+  transition: transform var(--op77-dur) var(--op77-ease);
+}
+
+body.open .strip { transform: none; }
+
+/* Each anchor decides four things: which edge the column sits against, which way
+   it slides in from, which way the selection pops, and which side of a plate
+   carries the diagonal. */
+.strip.anchor-top-left,
+.strip.anchor-left {
+  left: var(--op77-inset-x);
+  align-items: flex-start;
+  --slide: -10px;
+  --pop: 18px;
+  --plate: polygon(0 0, 100% 0, calc(100% - var(--cut)) 100%, 0 100%);
+}
+
+.strip.anchor-top-right,
+.strip.anchor-right {
+  right: var(--op77-inset-x);
+  align-items: flex-end;
+  --slide: 10px;
+  --pop: -18px;
+  --plate: polygon(var(--cut) 0, 100% 0, 100% 100%, 0 100%);
+}
+
+.strip.anchor-top-left,
+.strip.anchor-top-right { top: var(--op77-inset-y); }
+
+/* The mid band: below the vanilla minimap (ends 30%) and above the vanilla
+   control hints (start 66%). vh, so it survives a resolution change. */
+.strip.anchor-left,
+.strip.anchor-right { top: 33vh; }
+
+/* The shared plate: a box holding upright text, with a cut shape drawn behind
+   it. Only as wide as its own text; the minimum keeps a two-character row from
+   collapsing into a stub. */
+.head,
+.trail,
+.row,
+.hint,
+.status {
+  position: relative;
+  width: auto;
+  min-width: 58%;
+  max-width: 100%;
+  flex: none;
+  background: none;
+  border: 0;
+}
+
+.head::before,
+.trail::before,
+.row::before,
+.hint::before,
+.status::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  clip-path: var(--plate);
+  background: var(--op77-panel);
+  border: 1px solid var(--op77-line-hud);
+  transition:
+    background var(--op77-dur-fast) var(--op77-ease),
+    border-color var(--op77-dur-fast) var(--op77-ease);
+}
+
+/* The rail's gutter, reserved whether or not the list is paged, so rows do not
+   shift sideways the moment a menu grows past the window. */
+.strip.anchor-top-left .list, .strip.anchor-left .list { padding-left: var(--op77-space-3); }
+.strip.anchor-top-right .list, .strip.anchor-right .list { padding-right: var(--op77-space-3); }
+.strip.anchor-top-left .list::before, .strip.anchor-left .list::before,
+.strip.anchor-top-left .list::after, .strip.anchor-left .list::after { left: 0; }
+.strip.anchor-top-right .list::before, .strip.anchor-right .list::before,
+.strip.anchor-top-right .list::after, .strip.anchor-right .list::after { right: 0; }
+
+/* Room for the diagonal: text landing in the wedge reads as clipped. */
+.strip.anchor-top-left .head, .strip.anchor-left .head,
+.strip.anchor-top-left .row,  .strip.anchor-left .row,
+.strip.anchor-top-left .hint, .strip.anchor-left .hint,
+.strip.anchor-top-left .status, .strip.anchor-left .status {
+  padding-right: calc(var(--op77-space-3) + var(--cut));
+}
+.strip.anchor-top-right .head, .strip.anchor-right .head,
+.strip.anchor-top-right .row,  .strip.anchor-right .row,
+.strip.anchor-top-right .hint, .strip.anchor-right .hint,
+.strip.anchor-top-right .status, .strip.anchor-right .status {
+  padding-left: calc(var(--op77-space-3) + var(--cut));
+}
+
+/* The title plate carries the house marker: an accent rule down the leading
+   edge, the side facing the screen, where the cut is not. */
+.head {
+  display: flex;
+  align-items: baseline;
+  padding: var(--op77-space-2) var(--op77-space-3);
+  min-width: 72%;
+}
+.head::before {
+  box-shadow: var(--op77-rule) 0 0 0 var(--op77-accent) inset;
+  filter: var(--plate-shadow);
+}
+.strip.anchor-top-right .head::before,
+.strip.anchor-right .head::before {
+  box-shadow: calc(var(--op77-rule) * -1) 0 0 0 var(--op77-accent) inset;
+}
+
+.title {
+  flex: 1;
+  min-width: 0;
+  font: 700 var(--op77-fs-lead) / 1.1 var(--op77-font-display);
+  letter-spacing: var(--op77-track-head);
+  text-transform: uppercase;
+  color: var(--op77-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trail {
+  margin: 0;
+  padding: var(--op77-space-1) var(--op77-space-3);
+  font: 400 var(--op77-fs-micro) / 1.4 var(--op77-font-mono);
+  letter-spacing: var(--op77-track-micro);
+  text-transform: uppercase;
+  color: var(--op77-text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.trail:empty { display: none; }
+
+/* The list never scrolls: Lua sends the window it wants drawn. */
+.list {
+  position: relative;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  align-items: inherit;
+  gap: var(--op77-space-1);
+  background: none;
+  border: 0;
+  flex: 0 1 auto;
+  min-height: 0;
+  width: 100%;
+  /* `visible` paired with `clip` is the one mix the spec allows: pairing it with
+     `hidden` turns both axes into `auto` and puts a scrollbar on a surface with
+     no pointer. */
+  overflow-x: visible;
+  overflow-y: clip;
+}
+
+/* Where the window sits in a longer list: a track, and a thumb whose offset and
+   height are the window's own proportions. */
+.list::before,
+.list::after {
+  content: "";
+  position: absolute;
+  width: var(--op77-rule);
+  opacity: 0;
+  transition: opacity var(--op77-dur-fast) var(--op77-ease);
+}
+.list.paged::before,
+.list.paged::after { opacity: 1; }
+
+.list::before {
+  top: 0;
+  bottom: 0;
+  background: var(--op77-line-hud);
+}
+
+.list::after {
+  top: calc((var(--first, 1) - 1) / var(--total, 1) * 100%);
+  height: calc(var(--rows, 1) / var(--total, 1) * 100%);
+  /* A two-hundred-row list would otherwise draw a thumb too small to see. */
+  min-height: 12px;
+  /* Ink, not an accent: the title's marker and the selected row already spend
+     the design system's accent budget. */
+  background: var(--op77-text);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--op77-space-3);
+  padding: 4px var(--op77-space-3);
+  color: var(--op77-text-dim);
+  white-space: nowrap;
+  transition: transform var(--op77-dur-fast) var(--op77-ease);
+}
+
+/* Declared here because in game nothing else does: there is no reset stylesheet
+   under this page, only the token file. */
+.row[hidden] { display: none; }
+
+/* A slot always carries all three spans; blank ones collapse so the flex gap
+   does not pay for them. */
+.row .value:empty,
+.row .mark-col:empty { display: none; }
+.row.rule .value,
+.row.rule .mark-col { display: none; }
+
+/* The display face, condensed: it fits four or five more characters before the
+   ellipsis, which on a vehicle list is the difference between a name and a
+   guess. */
+.row .label {
+  flex: 0 1 auto;
+  min-width: 0;
+  font: 600 var(--op77-fs-lead) / 1.25 var(--op77-font-display);
+  letter-spacing: var(--op77-track-head);
+  text-transform: uppercase;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.row .value {
+  flex: none;
+  margin-left: auto;
+  font: 400 var(--op77-fs-meta) / 1 var(--op77-font-mono);
+  letter-spacing: var(--op77-track-label);
+  color: var(--op77-text-faint);
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The affordance column: `>` on a submenu row, `< >` on a row whose value LEFT
+   and RIGHT change, blank otherwise. */
+.row .mark-col {
+  flex: none;
+  text-align: right;
+  color: var(--op77-text-faint);
+  font: 700 var(--op77-fs-meta) / 1 var(--op77-font-mono);
+}
+
+/* A disabled row keeps a FULL-strength plate: the token file's 0.94 alpha floor
+   is about words over a night street, not about importance. The difference is
+   carried by the ink and the hairline. */
+.row.off::before { border-color: var(--op77-line); }
+.row.off .label,
+.row.off .value { color: var(--op77-text-faint); }
+
+/* A separator is not a row: a tab that shrinks to its caption, with a pause
+   above it. Between plates, the gap already separates. */
+.row.rule {
+  min-width: 0;
+  margin-top: var(--op77-space-2);
+  padding: 3px var(--op77-space-3);
+  color: var(--op77-text-dim);
+}
+.row.rule:first-child { margin-top: 0; }
+.row.rule::before { border: 0; }
+.row.rule .label {
+  flex: none;
+  font: 700 var(--op77-fs-micro) / 1 var(--op77-font-mono);
+  letter-spacing: var(--op77-track-micro);
+}
+
+/* A separator with no caption is pure space: the gap, doubled. */
+.row.rule.blank {
+  padding: 0;
+  min-height: 0;
+}
+.row.rule.blank::before { display: none; }
+
+/* The selection is the hover this surface can never have. Position, colour and
+   fill at once, because it is read at arm's length over a moving image. */
+.row.on {
+  transform: translateX(var(--pop));
+  color: var(--op77-ink);
+}
+.row.on::before {
+  background: var(--op77-accent);
+  border-color: var(--op77-accent-ice);
+  filter: var(--plate-shadow);
+}
+.row.on .label { font-weight: 700; }
+.row.on .value { color: var(--op77-ink); opacity: 0.72; }
+.row.on .mark-col { color: var(--op77-ink); }
+
+/* The cursor lands on a disabled row only when a screen has nothing else to land
+   on. It still shows where the cursor is, without looking available. */
+.row.on.off { color: var(--op77-text-dim); }
+.row.on.off::before {
+  background: var(--op77-panel-raised);
+  border-color: var(--op77-line-strong);
+  filter: none;
+}
+.row.on.off .value,
+.row.on.off .mark-col { color: var(--op77-text-faint); opacity: 1; }
+
+/* A separator never takes the cursor. Stated anyway, so it would not be drawn as
+   a chosen thing if one ever did. */
+.row.rule.on {
+  transform: none;
+  color: var(--op77-text-faint);
+}
+.row.rule.on::before { background: var(--op77-panel); filter: none; }
+
+.hint {
+  margin: 0;
+  padding: var(--op77-space-2) var(--op77-space-3);
+  font: 400 var(--op77-fs-meta) / 1.4 var(--op77-font-body);
+  color: var(--op77-text-dim);
+  /* The one place the strip wraps: a description is a sentence. */
+  white-space: normal;
+}
+.hint:empty { display: none; }
+
+.status {
+  margin: 0;
+  padding: var(--op77-space-2) var(--op77-space-3);
+  font: 400 var(--op77-fs-meta) / 1.4 var(--op77-font-mono);
+  color: var(--op77-ok);
+  white-space: normal;
+}
+.status.bad { color: var(--op77-danger); }
+.status:empty { display: none; }
+
+/* The plates deal themselves in when a menu opens. A one-shot: the design
+   system's ban is on idle animation, and `body.open` changes once per menu.
+   `--slot` is set on each row by the page; the reduced-motion block in
+   open77-ui.css collapses all of this to 1ms. */
+@keyframes plate-in {
+  from {
+    opacity: 0;
+    transform: translateX(calc(var(--pop) * -1.2));
+  }
+}
+
+body.open .head,
+body.open .trail,
+body.open .hint,
+body.open .status {
+  animation: plate-in var(--op77-dur) var(--op77-ease) backwards;
+}
+
+body.open .row {
+  animation: plate-in var(--op77-dur) var(--op77-ease) backwards;
+  animation-delay: calc(var(--slot, 0) * 30ms + 40ms);
+}
+
+/* The scanline, on the two plates that carry it well. Static, not animated. */
+.head::before,
+.row.on::before {
+  border-color: var(--op77-accent-line);
+  background-image: repeating-linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0.14) 0,
+    rgba(0, 0, 0, 0.14) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+}

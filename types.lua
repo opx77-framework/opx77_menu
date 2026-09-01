@@ -1,0 +1,175 @@
+---@meta
+--- Type annotations for opx77_menu. Never loaded at runtime.
+
+---@alias MenuHandle integer     unique for the life of the client session
+---@alias MenuAction "select"|"change"|"open"|"back"|"close"
+---@alias MenuKind
+---| "action"     ENTER fires it and nothing else does
+---| "submenu"    ENTER or RIGHT descends
+---| "toggle"     a boolean; ENTER, LEFT and RIGHT all flip it
+---| "choices"    a fixed list; LEFT/RIGHT cycle, ENTER advances
+---| "slider"     a number with a step; LEFT/RIGHT step, ENTER re-fires
+---| "separator"  a rule, or a section caption. Never selectable
+---| "back"       pops one level
+---| "close"      closes the menu
+
+--- Which row the cursor starts on: an item `id`, or a 1-based index. Advisory --
+--- an unresolvable value falls back to the first selectable row.
+---@alias MenuCursor string|integer
+
+--- The table handed to the `open` export, and to `update`. Only `items` is required.
+---@class MenuSpec
+---@field items MenuItem[]
+---@field id string|nil            unique per owner; defaults to the owner name
+---@field title string|nil         defaults to the owner name, upper-cased
+---@field event string|nil         the default event for every item
+---@field data table|nil           opaque, echoed in every payload as `menuData`
+---@field cursor MenuCursor|nil  where the cursor starts. Open and push only
+---@field status string|nil        a transient line under the list
+---@field closeOnSelect boolean|nil  close after any item fires. Default false
+---@field steal boolean|nil        take over another resource's open menu
+
+--- One row. The kind is derived from the shape, never declared.
+---@class MenuItem
+---@field label string             required, except on a separator
+---@field text string|nil          accepted as an alias for `label`
+---@field id string|nil            defaults to "item_<n>" within its level
+---@field value string|number|nil  the right-hand text, on an item with no value of its own
+---@field description string|nil   shown under the list while this row is selected
+---@field disabled boolean|nil     drawn, never selectable
+---@field event string|nil         overrides the menu's own event
+---@field data table|nil           opaque, echoed in the payload
+---@field close boolean|nil        close the menu after this item fires
+---@field back boolean|nil         this row pops one level
+---@field separator boolean|nil    a rule; with a label, a section caption
+---@field items MenuItem[]|nil     a submenu
+---@field title string|nil         a submenu's own title; defaults to its label
+---@field cursor MenuCursor|nil  where a submenu's cursor starts
+---@field toggle boolean|nil       a boolean row
+---@field onLabel string|nil       what a true toggle reads. Default "ON"
+---@field offLabel string|nil      what a false toggle reads. Default "OFF"
+---@field choices string[]|nil     a fixed list
+---@field selected integer|nil  which choice is current. 1-based
+---@field slider MenuSlider|nil    a number the player steps
+
+---@class MenuSlider
+---@field min number|nil     default 0
+---@field max number|nil     default 100
+---@field step number|nil    default 1
+---@field value number|nil   default `min`
+---@field suffix string|nil  drawn after the number, e.g. "%"
+
+--- The payload of every event this resource raises: the item's own `event` if it
+--- has one, the menu's otherwise, then `OPX_MENU_CONFIG.GLOBAL_EVENT`.
+---@class MenuPayload
+---@field menu string              the menu's id
+---@field handle MenuHandle
+---@field owner string             the resource that opened it
+---@field action MenuAction
+---@field itemId string|nil        nil on a menu-level `back` or `close`
+---@field label string|nil
+---@field index integer|nil        the cursor's position on the current screen
+---@field depth integer            1 at the root
+---@field value any                boolean for a toggle, string for a choice, number for a slider
+---@field data table|nil           the item's own `data`
+---@field menuData table|nil       the menu's `data`
+---@field reason string|nil        on `close` only
+
+--- Every export answers one of these and never raises. `error` is a stable code
+--- meant for branching, never shown to a player.
+---@class MenuResponse
+---@field ok boolean
+---@field error string|nil
+
+---@class MenuOpened : MenuResponse
+---@field handle MenuHandle|nil
+---@field id string|nil
+---@field items integer|nil  how many nodes the whole tree came to
+
+--- What `state` answers.
+---@class MenuState : MenuResponse
+---@field open boolean
+---@field mine boolean         true when the open menu belongs to the caller
+---@field handle MenuHandle|nil
+---@field owner string|nil
+---@field menu string|nil
+---@field title string|nil
+---@field depth integer|nil
+---@field index integer|nil
+---@field total integer|nil
+---@field itemId string|nil
+---@field label string|nil
+---@field value any
+
+--- A normalised item. `kind` is decided once, at build.
+---@class MenuEntry
+---@field id string
+---@field kind MenuKind
+---@field label string
+---@field value string|nil
+---@field description string|nil
+---@field disabled boolean
+---@field event string|nil
+---@field data table|nil
+---@field close boolean|nil
+---@field items MenuEntry[]|nil
+---@field title string|nil
+---@field cursor MenuCursor|nil
+---@field selected integer|nil    a choice list's current index
+---@field on boolean|nil          a toggle's state
+---@field labels table|nil        a toggle's two words
+---@field choices string[]|nil
+---@field slider MenuSlider|nil
+
+--- One screen. `id` names the item that opened it, which is what lets `update`
+--- put the player back where they were.
+---@class MenuFrame
+---@field items MenuEntry[]
+---@field title string
+---@field id string|nil
+---@field index integer
+
+--- One open menu.
+---@class MenuRecord
+---@field handle MenuHandle
+---@field owner string
+---@field generation integer
+---@field id string
+---@field title string
+---@field event string|nil
+---@field data table|nil
+---@field closeOnSelect boolean
+---@field items MenuEntry[]
+---@field nodes integer
+---@field stack MenuFrame[]
+---@field status MenuStatus|nil
+
+--- A transient line under the list. Clears itself after `OPX_MENU_CONFIG.STATUS_MS`.
+---@class MenuStatus
+---@field text string
+---@field ok boolean
+---@field atMs integer
+
+--- One frame, as the page receives it. A window of rows, never the whole list.
+---@class MenuView
+---@field title string
+---@field trail string|nil
+---@field rows MenuRow[]
+---@field first integer
+---@field total integer
+---@field index integer
+---@field depth integer
+---@field hint string|nil
+---@field status string|nil
+---@field statusBad true|nil  absent when the line reports a success
+
+--- Absent flags are `nil` rather than `false`: an absent field costs no value
+--- node against the host's 1024-node ceiling.
+---@class MenuRow
+---@field label string
+---@field value string|nil
+---@field arrow true|nil  opens a submenu
+---@field spin true|nil   LEFT and RIGHT change its value
+---@field rule true|nil   a separator
+---@field off true|nil    disabled
+---@field on true|nil     the cursor is here
