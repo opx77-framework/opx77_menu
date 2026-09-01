@@ -21,8 +21,17 @@ local REPEAT_INTERVAL_MS = 55
 local Input = {}
 OpxMenu.input = Input
 
---- The six actions. Config maps each to a key.
+--- The six actions, in the order they are registered.
 local ACTIONS = { "UP", "DOWN", "LEFT", "RIGHT", "SELECT", "BACK" }
+
+--- action -> the id it registers under with the engine. Derived once: three call sites
+--- each built `"menu." .. action:lower()` for themselves, which is three chances to spell
+--- it differently and a string allocated per action per call.
+local ACTION_IDS = {}
+for index = 1, #ACTIONS do
+  local action = ACTIONS[index]
+  ACTION_IDS[action] = "menu." .. action:lower()
+end
 
 --- Human labels for the rebinding UI, which every running resource shares.
 local ACTION_NAMES = {
@@ -35,8 +44,8 @@ local ACTION_NAMES = {
 }
 
 local state = {}
-for _, action in ipairs(ACTIONS) do
-  state[action] = { down = false, suppressed = false, nextAtMs = 0 }
+for index = 1, #ACTIONS do
+  state[ACTIONS[index]] = { down = false, suppressed = false, nextAtMs = 0 }
 end
 
 --- Set by `Input.attach`: "mappings", "poll" or "none".
@@ -50,6 +59,12 @@ Input.keys = {}
 
 --- Live level state for the mapping backend, maintained from the two edges.
 local held = {}
+
+--- Resolved once by `Input.attach`. `isHeld` runs six times a frame and `captured` once,
+--- and walking `Open77.input` on each read was a table lookup and a `type` call per read
+--- for a function that cannot change while the resource is running.
+local isDown = nil
+local isCaptured = nil
 
 ---@return table|nil
 local function api()
@@ -65,10 +80,12 @@ local function attachMappings()
   if type(register) ~= "function" then return false, "no_register_key_mapping" end
 
   local registered = {}
-  for _, action in ipairs(ACTIONS) do
+  local count = 0
+  for index = 1, #ACTIONS do
+    local action = ACTIONS[index]
     local key = KEYS[action]
     local ok, effective = register({
-      id = "menu." .. action:lower(),
+      id = ACTION_IDS[action],
       name = ACTION_NAMES[action],
       key = key,
       -- Both edges: without `hold` no up edge arrives and auto-repeat cannot
@@ -78,14 +95,15 @@ local function attachMappings()
       onReleased = function() held[action] = false end,
     })
     if ok ~= true then
-      for _, done in ipairs(registered) do
+      for done = 1, count do
         if type(input.unregisterKeyMapping) == "function" then
-          input.unregisterKeyMapping(done)
+          input.unregisterKeyMapping(registered[done])
         end
       end
       return false, tostring(effective or "rejected")
     end
-    registered[#registered + 1] = "menu." .. action:lower()
+    count = count + 1
+    registered[count] = ACTION_IDS[action]
     Input.keys[action] = tostring(effective or key):upper()
     held[action] = false
   end
@@ -101,7 +119,8 @@ local function attachPolling()
   -- `isDown` answers `false, "permission_denied:..."` rather than raising.
   local _, refusal = input.isDown(KEYS.SELECT)
   if refusal ~= nil then return false, tostring(refusal) end
-  for _, action in ipairs(ACTIONS) do
+  for index = 1, #ACTIONS do
+    local action = ACTIONS[index]
     Input.keys[action] = tostring(KEYS[action]):upper()
   end
   return true
@@ -112,10 +131,8 @@ end
 ---@return boolean
 local function isHeld(action)
   if Input.backend == "mappings" then return held[action] == true end
-  if Input.backend == "poll" then
-    local input = api()
-    if input == nil then return false end
-    return input.isDown(KEYS[action]) == true
+  if Input.backend == "poll" and isDown ~= nil then
+    return isDown(KEYS[action]) == true
   end
   return false
 end
@@ -129,6 +146,10 @@ end
 ---@return string backend, string|nil note  why it fell back, for main.lua to log
 function Input.attach()
   local note
+
+  local input = api()
+  isDown = input ~= nil and type(input.isDown) == "function" and input.isDown or nil
+  isCaptured = input ~= nil and type(input.isCaptured) == "function" and input.isCaptured or nil
 
   local ok, reason = attachMappings()
   if ok then
@@ -155,8 +176,9 @@ function Input.refresh()
   local input = api()
   if input == nil or type(input.keyFor) ~= "function" then return false end
   local changed = false
-  for _, action in ipairs(ACTIONS) do
-    local key = input.keyFor("menu." .. action:lower())
+  for index = 1, #ACTIONS do
+    local action = ACTIONS[index]
+    local key = input.keyFor(ACTION_IDS[action])
     if key ~= nil then
       key = tostring(key):upper()
       if key ~= Input.keys[action] then
@@ -172,15 +194,15 @@ end
 --- operator panel. The menu stands down rather than fighting for the arrow keys.
 ---@return boolean
 function Input.captured()
-  local input = api()
-  if input == nil or type(input.isCaptured) ~= "function" then return false end
-  return input.isCaptured() == true
+  if isCaptured == nil then return false end
+  return isCaptured() == true
 end
 
 --- Record the current physical state without firing anything. Run on open and on
 --- every captured tick, so a key pressed into chat cannot leak out of it.
 function Input.prime()
-  for _, action in ipairs(ACTIONS) do
+  for index = 1, #ACTIONS do
+    local action = ACTIONS[index]
     local entry = state[action]
     local down
     if Input.backend == "mappings" then
@@ -229,7 +251,7 @@ function Input.release()
   if Input.backend ~= "mappings" then return end
   local input = api()
   if input == nil or type(input.unregisterKeyMapping) ~= "function" then return end
-  for _, action in ipairs(ACTIONS) do
-    input.unregisterKeyMapping("menu." .. action:lower())
+  for index = 1, #ACTIONS do
+    input.unregisterKeyMapping(ACTION_IDS[ACTIONS[index]])
   end
 end

@@ -278,9 +278,9 @@ local function activate()
 end
 
 --- One tick of the input thread: six level reads and the edge tests.
-local function tick()
+---@param atMs integer  the frame's clock, read once by the caller
+local function tick(atMs)
   if record == nil then return end
-  local atMs = nowMs()
 
   -- Re-primed so nothing typed into the surface that owns the keyboard leaks.
   if Input.captured() then
@@ -434,9 +434,12 @@ AddEventHandler("onClientResourceStart", function(name)
   CreateThread(function()
     while page ~= nil do
       if record ~= nil then
-        tick()
-        expireStatus(nowMs())
-    sweep(nowMs())
+        -- One clock read for the frame. `monotonic` is a host call, and three of them per
+        -- frame asked the same question three times to get the same answer.
+        local atMs = nowMs()
+        tick(atMs)
+        expireStatus(atMs)
+        sweep(atMs)
         Wait(0)
       else
         Wait(IDLE_MS)

@@ -76,10 +76,10 @@ local function normalizeChoices(item)
   local raw = item.choices
   if type(raw) ~= "table" then return nil, "invalid_choices" end
   local labels = {}
-  for _, entry in ipairs(raw) do
-    local label = displayText(entry, MAX_VALUE)
+  for index = 1, #raw do
+    local label = displayText(raw[index], MAX_VALUE)
     if label == nil then return nil, "invalid_choice" end
-    labels[#labels + 1] = label
+    labels[index] = label
   end
   if #labels == 0 then return nil, "empty_choices" end
   local selected = finite(item.selected) and math.floor(item.selected) or 1
@@ -218,18 +218,22 @@ end
 ---@return MenuEntry[]|nil, string|nil
 normalizeItems = function(items, depth, budget)
   if type(items) ~= "table" then return nil, "items_must_be_a_table" end
+  -- Counted once, before any work: a caller handing over a thousand rows had two hundred
+  -- of them normalised before being told the list was too long.
+  local total = #items
+  if total > MAX_ROWS then return nil, "too_many_items" end
+
   local list = {}
-  for index, raw in ipairs(items) do
-    if index > MAX_ROWS then return nil, "too_many_items" end
-    local entry, reason = normalizeItem(raw, index, depth, budget)
+  for index = 1, total do
+    local entry, reason = normalizeItem(items[index], index, depth, budget)
     if entry == nil then return nil, reason end
-    list[#list + 1] = entry
+    list[index] = entry
   end
   if #list == 0 then return nil, "empty_menu" end
   -- Only DISABLED rows stays allowed: "your garage is empty" is a real menu.
   local substantial = false
-  for _, entry in ipairs(list) do
-    if entry.kind ~= "separator" then substantial = true break end
+  for index = 1, #list do
+    if list[index].kind ~= "separator" then substantial = true break end
   end
   if not substantial then return nil, "only_separators" end
   return list
@@ -247,16 +251,18 @@ end
 ---@param wanted MenuCursor|nil
 ---@return integer
 local function cursorIndex(items, wanted)
+  local total = #items
   if type(wanted) == "string" then
-    for index, entry in ipairs(items) do
+    for index = 1, total do
+      local entry = items[index]
       if entry.id == wanted and selectable(entry) then return index end
     end
   elseif type(wanted) == "number" and wanted % 1 == 0 then
     local index = math.floor(wanted)
     if selectable(items[index]) then return index end
   end
-  for index, entry in ipairs(items) do
-    if selectable(entry) then return index end
+  for index = 1, total do
+    if selectable(items[index]) then return index end
   end
   return 1
 end
@@ -330,7 +336,8 @@ local function rewalk(record, items, title)
   for depth = 2, #record.stack do
     local previous = record.stack[depth]
     local found
-    for _, entry in ipairs(cursor) do
+    for index = 1, #cursor do
+      local entry = cursor[index]
       if entry.id == previous.id and entry.kind == "submenu" then found = entry break end
     end
     if found == nil then break end
@@ -538,9 +545,10 @@ end
 ---@param record MenuRecord
 ---@return string
 local function trail(record)
+  local stack = record.stack
   local parts = {}
-  for _, entry in ipairs(record.stack) do
-    parts[#parts + 1] = entry.title or ""
+  for depth = 1, #stack do
+    parts[depth] = stack[depth].title or ""
   end
   return table.concat(parts, " / ")
 end
@@ -556,10 +564,11 @@ function Model.view(record)
   local total = #top.items
   local first = windowFirst(top.index, total, rows)
   local window = {}
-  for index = first, math.min(first + rows - 1, total) do
+  local last = math.min(first + rows - 1, total)
+  for index = first, last do
     local entry = top.items[index]
     local kind = entry.kind
-    window[#window + 1] = {
+    window[index - first + 1] = {
       label = entry.label,
       value = Model.value(entry),
       -- nil rather than false throughout: an absent field costs no value node.
