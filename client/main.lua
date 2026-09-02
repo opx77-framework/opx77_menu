@@ -47,8 +47,8 @@ local MAX_STATUS = 120
 --- Set by anything that changes what is on screen; consumed by the tick.
 local dirty = false
 
---- `Open77.time.monotonic()` is SECONDS on the client, whatever the API
---- reference says; every shipped client resource treats it as seconds.
+--- `Open77.time.monotonic()` is SECONDS on the client, as the API reference and the
+--- host bootstrap both state; every shipped client resource treats it as seconds.
 ---@return integer
 local function nowMs()
   return math.floor(Open77.time.monotonic() * 1000)
@@ -81,7 +81,8 @@ local function emit(entry, action, extra)
   dispatch(record, entry, action, extra)
 end
 
---- Where the strip sits, how wide it is, and which theme. Sent once at ready.
+--- Where the strip sits, how wide it is, and how much of it is drawn. Sent once at ready:
+--- none of it changes while the resource runs.
 local function sendConfig()
   if page == nil or not pageReady then return end
   page:send("menu:config", {
@@ -370,12 +371,6 @@ AddEventHandler("open77:pauseKey", function()
   if record ~= nil then Runtime.close(record.handle, "pause") end
 end)
 
--- Raised after any rebind anywhere on the client. Nothing on screen shows a key,
--- so this changes no pixel -- it keeps `Input.keys` current for the `keys` export.
-AddEventHandler("open77:keybinds:changed", function()
-  Input.refresh()
-end)
-
 
 ---@return boolean
 function Runtime.unavailable()
@@ -452,6 +447,5 @@ AddEventHandler("onClientResourceStop", function(name)
   if name ~= RESOURCE then return end
   -- Tell whoever had a menu open, while there is still a Lua state to do it.
   if record ~= nil then Runtime.close(record.handle, "menu_stopped") end
-  Input.release()
   page, pageReady = nil, false
 end)

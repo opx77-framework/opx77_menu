@@ -23,7 +23,13 @@ local MAX_LABEL = 96
 local MAX_VALUE = 48
 local MAX_DESCRIPTION = 160
 
+--- A finite number: a number, not NaN, and neither infinity. One predicate, spelled the same
+--- way in every resource of this framework; the coercing form that answers with the number
+--- rather than a verdict is called `finiteNumber`.
+---@param value any
+---@return boolean
 local function finite(value)
+  -- `value == value` is the NaN check, not a typo: NaN is the one value unequal to itself
   return type(value) == "number" and value == value
     and value > -math.huge and value < math.huge
 end

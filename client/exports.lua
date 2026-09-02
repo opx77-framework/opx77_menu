@@ -109,8 +109,8 @@ exports("state", function()
   return snapshot
 end)
 
---- Write the transient line under the list. It clears itself after
---- `OPX_MENU_CONFIG.STATUS_MS`; `status(nil)` clears it now.
+--- Write the transient line under the list. It clears itself after `STATUS_MS`, a constant
+--- in client/main.lua and not an operator setting; `status(nil)` clears it now.
 ---@param text string|nil
 ---@param ok boolean|nil  false marks a failure, which changes its colour
 ---@return MenuResponse
@@ -129,8 +129,7 @@ exports("status", function(text, ok)
   return response(true, {})
 end)
 
---- The keys that currently drive the menu, and which backend reads them. Under
---- `BINDINGS = "mappings"` the player may have rebound them, so a resource that
+--- The keys that currently drive the menu, and which backend reads them. A resource that
 --- prints its own "press ENTER" hint should print what this says.
 ---@return MenuResponse  `backend` string, `keys` table<string, string>
 exports("keys", function()

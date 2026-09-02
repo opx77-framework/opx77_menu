@@ -14,9 +14,8 @@ Built for a platform with no cursor: the strip is drawn on the HUD layer, never 
 ## Features
 
 - Rows, submenus, toggles, choice lists and sliders
-- Player-rebindable keys through `RegisterKeyMapping`, or a fixed polling backend
+- Fixed arrow-key navigation, read through `Open77.input.isDown`
 - Four screen anchors, chosen to avoid the platform's own chat and notification bands
-- Two themes built from the same design tokens
 - One menu at a time, with an owner-generation sweep behind it
 
 ## Exports
@@ -27,12 +26,12 @@ Built for a platform with no cursor: the strip is drawn on the HUD layer, never 
 | `update` | replace the rows of a menu you own |
 | `close` | close it |
 | `status` | write a transient line under the list |
-| `keys` | the keys the player actually has, for a caller printing its own hint |
+| `keys` | the keys that drive the menu, for a caller printing its own hint |
 | `state` | whether a menu is open and whether it is yours |
 
 ## Configuration
 
-`config.lua`. Anchor, width, theme, the six key bindings, how many rows are drawn at once, and how long a status line stays up.
+`config.lua`. Anchor, width, and how many rows are drawn at once.
 
 ## Community & Support
 

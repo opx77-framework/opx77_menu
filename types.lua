@@ -60,7 +60,8 @@
 ---@field suffix string|nil  drawn after the number, e.g. "%"
 
 --- The payload of every event this resource raises: the item's own `event` if it
---- has one, the menu's otherwise, then `OPX_MENU_CONFIG.GLOBAL_EVENT`.
+--- has one, the menu's otherwise, and always `GLOBAL_EVENT` beside it -- `opx77:menu`,
+--- a constant in client/main.lua so that one listener can watch every menu.
 ---@class MenuPayload
 ---@field menu string              the menu's id
 ---@field handle MenuHandle
@@ -144,7 +145,8 @@
 ---@field stack MenuFrame[]
 ---@field status MenuStatus|nil
 
---- A transient line under the list. Clears itself after `OPX_MENU_CONFIG.STATUS_MS`.
+--- A transient line under the list. Clears itself after `STATUS_MS`, a constant in
+--- client/main.lua.
 ---@class MenuStatus
 ---@field text string
 ---@field ok boolean
