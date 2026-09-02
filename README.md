@@ -20,6 +20,8 @@ Built for a platform with no cursor: the strip is drawn on the HUD layer, never 
 
 ## Exports
 
+The exports are client-side only: a server resource calls them from its own client half.
+
 | Export | Does |
 |---|---|
 | `open` | open a menu, refusing the spec whole if any row is malformed |
@@ -28,6 +30,24 @@ Built for a platform with no cursor: the strip is drawn on the HUD layer, never 
 | `status` | write a transient line under the list |
 | `keys` | the keys that drive the menu, for a caller printing its own hint |
 | `state` | whether a menu is open and whether it is yours |
+
+Types for every spec, payload and response are in `types.lua`.
+
+### Rules a caller needs
+
+- One menu at a time. `open` answers `menu_busy` when another resource owns the open one,
+  unless the spec sets `steal = true`.
+- `update`, `close` and `status` answer `not_owner` unless the open menu is yours.
+- `state` reports only `open` and `mine` for a menu you do not own.
+- The menu closes itself when its owner stops or reloads, within a second.
+- Every event is raised on the item's or menu's own `event` name and on `opx77:menu` beside
+  it, so one listener can watch every menu.
+- The `status` line clears itself after six seconds; `status(nil)` clears it now.
+- Limits, all refusals rather than truncations: 200 items per level, 8 levels deep, 400
+  items in the whole tree, and a `data` table of at most 64 nodes — keys count as well as
+  values — nested at most 4 deep.
+- Escape closes the open menu, and the menu stands down whenever another surface has the
+  keyboard.
 
 ## Configuration
 

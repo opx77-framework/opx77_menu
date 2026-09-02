@@ -4,15 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>OPX77 Menu</title>
-<!-- Never edit open77-ui.css here: it is mirrored byte-for-byte into every
-     resource that owns a WebUI surface. Menu-specific rules go in menu.css. -->
+<!-- open77-ui.css is mirrored byte-for-byte across resources: edit menu.css instead. -->
 <link rel="stylesheet" href="open77-ui.css">
 <link rel="stylesheet" href="menu.css">
 </head>
 <body>
 
-<!-- No focusable element anywhere: the surface is on the "hud" layer and is
-     never focused, so a <button> here could never be reached. -->
+<!-- No focusable element: a "hud" surface is never focused. -->
 <div class="strip" id="strip">
 
   <header class="head">
@@ -22,14 +20,13 @@
   <!-- The breadcrumb, inside a submenu only. -->
   <p class="trail" id="trail"></p>
 
-  <!-- Where the window sits in a longer list is drawn as a rail down the
-       leading edge of this list, from three numbers Lua already sends. -->
+  <!-- The rows, with a scroll rail down the leading edge. -->
   <ul class="list" id="list"></ul>
 
   <!-- The selected row's description, when it has one. -->
   <p class="hint" id="hint"></p>
 
-  <!-- What the caller last had to say. Lua clears it after STATUS_MS. -->
+  <!-- The caller's transient status line. -->
   <p class="status" id="status"></p>
 
 </div>

@@ -1,11 +1,9 @@
-/* opx77_menu -- the strip's page. A renderer and nothing else: Lua reads the
- * keyboard, keeps the frame stack, and pushes the window of rows it wants drawn.
- */
+/* opx77_menu -- the strip's page: a renderer, driven entirely by Lua. */
 (function () {
   "use strict";
 
   // CEF console output does not reach the client log, and the WebUI bridge
-  // swallows every exception thrown inside an `Open77.on` handler.
+  // swallows exceptions thrown inside an `Open77.on` handler.
   var reportCount = 0;
   var reporting = false;
 
@@ -38,8 +36,7 @@
     };
   })(console.error);
 
-  // An empty Lua table arrives as `{}`, not `[]`, and `value || []` would keep
-  // it: `.forEach` then throws and aborts the whole render.
+  // An empty Lua table arrives as `{}`, not `[]`, so `value || []` would keep it.
   function list(value) { return Array.isArray(value) ? value : []; }
 
   function text(value) { return value === null || value === undefined ? "" : String(value); }
@@ -74,13 +71,10 @@
     if (isFinite(maxHeight) && maxHeight > 0) {
       elements.strip.style.setProperty("--strip-max-height", Math.round(maxHeight) + "vh");
     }
-
   }
 
-  /* One <li> per window SLOT, created once and rewritten in place. Rebuilding
-   * the list every frame would make every transition in menu.css dead code: a
-   * new element has no previous computed style to animate from.
-   */
+  // One <li> per window slot, created once and rewritten in place: a fresh element
+  // has no previous computed style, so menu.css could not transition it.
   var slots = [];
 
   function span(className) {
@@ -102,8 +96,7 @@
     entry.node.appendChild(entry.label);
     entry.node.appendChild(entry.value);
     entry.node.appendChild(entry.mark);
-    // Its position in the window, for the stylesheet's open stagger. Set once:
-    // a slot never changes position.
+    // Its position in the window, for the stylesheet's open stagger.
     entry.node.style.setProperty("--slot", index);
     slots[index] = entry;
     elements.list.appendChild(entry.node);
@@ -116,8 +109,7 @@
 
     elements.title.textContent = text(payload.title) || "MENU";
 
-    // Upper-cased and nothing else: Lua owns the separator, so re-splitting on
-    // "/" here would double every space and cut a title containing one.
+    // Upper-cased and nothing else: Lua owns the "/" separator.
     elements.trail.textContent = text(payload.trail).toUpperCase();
 
     for (var index = 0; index < rows.length; index += 1) {
@@ -128,8 +120,7 @@
       if (row.rule) classes += " rule";
       if (row.off) classes += " off";
       if (row.on) classes += " on";
-      // A class rather than `:has(.label:empty)`, whose support on this client
-      // build is not something to bet the layout on.
+      // A class rather than `:has(.label:empty)`, unsupported on this client build.
       if (row.rule && text(row.label) === "") classes += " blank";
       entry.node.className = classes;
       entry.node.hidden = false;
@@ -140,15 +131,14 @@
       entry.mark.textContent = row.arrow ? ">" : (row.spin ? "\u2039\u203A" : "");
     }
 
-    // Slots past the end of a shorter frame. The class is reset too: a hidden
+    // Slots past the end of a shorter frame. The class is reset too, or a hidden
     // slot that kept `on` would come back selected under a longer menu.
     for (var spare = rows.length; spare < slots.length; spare += 1) {
       slots[spare].node.className = "row";
       slots[spare].node.hidden = true;
     }
 
-    // The three numbers the scroll rail is drawn from; the stylesheet does the
-    // arithmetic.
+    // The three numbers the scroll rail is drawn from; the stylesheet does the sums.
     var total = Number(payload.total) || 0;
     var first = Number(payload.first) || 1;
     elements.list.style.setProperty("--first", first);
@@ -158,8 +148,7 @@
 
     elements.hint.textContent = text(payload.hint);
 
-    // Only the failure flag crosses the bridge; a status with nothing said about
-    // it is a success.
+    // Only the failure flag crosses the bridge; anything else is a success.
     elements.status.textContent = text(payload.status);
     elements.status.className = payload.statusBad ? "status bad" : "status";
 
@@ -168,8 +157,8 @@
 
   function hide() {
     document.body.classList.remove("open");
-    // Blanked on hide, not on the next open: the strip fades out over 150ms, and
-    // a frame arriving during that fade would show the previous menu's rows.
+    // Blanked on hide, not on the next open: a frame arriving during the fade-out
+    // would show the previous menu's rows.
     for (var index = 0; index < slots.length; index += 1) {
       slots[index].node.className = "row";
       slots[index].node.hidden = true;
@@ -191,8 +180,7 @@
     try { hide(); } catch (error) { report("hide: " + describe(error)); }
   });
 
-  // Emitted whatever happened above: Lua drops every message until the page has
-  // reported ready.
+  // Emitted whatever happened above: Lua drops every message until the page is ready.
   try { Open77.ready(); } catch (error) { report("ready: " + describe(error)); }
   Open77.emit("menu:ready", {});
 })();

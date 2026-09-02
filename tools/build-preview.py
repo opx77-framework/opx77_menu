@@ -37,6 +37,7 @@ menucss = (ROOT / "web/menu.css").read_text(encoding="utf-8")
 menujs = (ROOT / "web/menu.js").read_text(encoding="utf-8")
 index = (ROOT / "web/index.html").read_text(encoding="utf-8")
 config = (ROOT / "config.lua").read_text(encoding="utf-8")
+mainlua = (ROOT / "client/main.lua").read_text(encoding="utf-8")
 
 # --- config.lua, so the preview shows what is actually configured -----------
 def scalar(name, cast=str):
@@ -45,17 +46,25 @@ def scalar(name, cast=str):
         raise SystemExit("config.lua: %s not found" % name)
     return cast(match.group(1).strip().strip('"'))
 
-# Not part of `menu:config` -- Lua expires the status line on its own tick, and
-# the page only needs the number to fake that tick with a timer.
-STATUS_MS = scalar("STATUS_MS", int)
+def constant(name, cast=str):
+    match = re.search(r"^local\s+%s\s*=\s*(\S+)" % name, mainlua, re.M)
+    if match is None:
+        raise SystemExit("client/main.lua: %s not found" % name)
+    return cast(match.group(1).strip().strip('"'))
+
+# Not part of `menu:config`. Lua expires the status line on its own tick; the
+# page only needs the number to fake that tick with a timer.
+STATUS_MS = constant("STATUS_MS", int)
+
+# Not part of `menu:config` either: Lua sends the window, so the page never
+# needs the row count. The driver below stands in for Lua and does.
+ROWS = scalar("VISIBLE_ROWS", int)
 
 # Exactly the fields client/main.lua sends in `menu:config`, and no others.
 CFG = {
     "anchor": scalar("ANCHOR"),
     "width": scalar("WIDTH", int),
-    "maxHeight": scalar("MAX_HEIGHT_VH", int),
-    "theme": scalar("THEME"),
-    "rows": scalar("VISIBLE_ROWS", int),
+    "maxHeight": constant("MAX_HEIGHT_VH", int),
 }
 
 # --- the strip's markup, lifted out of the real page ------------------------
@@ -85,11 +94,10 @@ driver_js = r"""
  * driven by the same payloads Lua sends. Not part of the resource.
  *
  *   arrows / enter / backspace   navigate, exactly as in game
- *   T                            swap the theme
  *   A                            cycle the anchor
  *   M                            swap the sample menu
  *
- * The three letters are here so a design can be compared without a control
+ * The two letters are here so a design can be compared without a control
  * panel on screen; nothing draws them, and the game never sees them.
  */
 (function () {
@@ -98,6 +106,7 @@ driver_js = r"""
   var CONFIG = __CONFIG__;
   var SAMPLES = __SAMPLES__;
   var STATUS_MS = __STATUS_MS__;
+  var ROWS = __ROWS__;
   var ANCHORS = ["top-left", "top-right", "left", "right"];
 
   /* --------------------------------------------------------------- model */
@@ -222,9 +231,9 @@ driver_js = r"""
   function draw() {
     var top = frame();
     var total = top.items.length;
-    var first = windowFirst(top.index, total, CONFIG.rows);
+    var first = windowFirst(top.index, total, ROWS);
     var rows = [];
-    for (var index = first; index <= Math.min(first + CONFIG.rows - 1, total); index += 1) {
+    for (var index = first; index <= Math.min(first + ROWS - 1, total); index += 1) {
       var entry = top.items[index - 1];
       rows.push({
         label: entry.label,
@@ -254,8 +263,8 @@ driver_js = r"""
     });
   }
 
-  /* Lua clears the line after OPX_MENU_CONFIG.STATUS_MS, on its own tick. The
-     page has no tick, so a timer stands in for one. */
+  /* Lua clears the line after STATUS_MS, on its own tick. The page has no
+     tick, so a timer stands in for one. */
   function say(text, bad) {
     status = text ? { text: text, bad: bad } : null;
     window.clearTimeout(statusTimer);
@@ -308,10 +317,6 @@ driver_js = r"""
   function sendConfig() { Open77.__deliver("menu:config", live); }
 
   var SWITCH = {
-    t: function () {
-      live.theme = live.theme === "cyberpunk" ? "open77" : "cyberpunk";
-      sendConfig();
-    },
     a: function () {
       live.anchor = ANCHORS[(ANCHORS.indexOf(live.anchor) + 1) % ANCHORS.length];
       sendConfig();
@@ -468,7 +473,7 @@ window.Open77 = (function () {{
 {menujs}
 </script>
 <script>
-{driver_js.replace("__CONFIG__", json.dumps(CFG)).replace("__SAMPLES__", json.dumps(SAMPLES)).replace("__STATUS_MS__", str(STATUS_MS))}
+{driver_js.replace("__CONFIG__", json.dumps(CFG)).replace("__SAMPLES__", json.dumps(SAMPLES)).replace("__STATUS_MS__", str(STATUS_MS)).replace("__ROWS__", str(ROWS))}
 </script>
 </body>
 </html>
@@ -477,4 +482,4 @@ window.Open77 = (function () {{
 out = ROOT / "preview.html"
 out.write_text(html, encoding="utf-8")
 print("wrote %s (%.0f KB)" % (out, len(html) / 1024))
-print("anchor=%(anchor)s theme=%(theme)s width=%(width)spx rows=%(rows)s" % CFG)
+print("anchor=%s width=%spx rows=%s" % (CFG["anchor"], CFG["width"], ROWS))

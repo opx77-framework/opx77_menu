@@ -1,5 +1,4 @@
---- opx77_menu -- the model: a validated tree, the navigation stack, and what the
---- page should draw. Touches neither the page, the keyboard nor the network.
+--- opx77_menu -- the model: the validated tree, the navigation stack, and the view.
 
 OpxMenu = OpxMenu or {}
 
@@ -10,8 +9,7 @@ local Config = OPX_MENU_CONFIG
 local Model = {}
 OpxMenu.model = Model
 
--- The host drops any event past 1024 value nodes in silence, and `data` rides
--- in every one.
+-- The host silently drops any event past 1024 value nodes, and `data` rides in every one.
 local MAX_NODES = 400
 
 local MAX_DATA_NODES = 64
@@ -23,13 +21,11 @@ local MAX_LABEL = 96
 local MAX_VALUE = 48
 local MAX_DESCRIPTION = 160
 
---- A finite number: a number, not NaN, and neither infinity. One predicate, spelled the same
---- way in every resource of this framework; the coercing form that answers with the number
---- rather than a verdict is called `finiteNumber`.
+--- A finite number: not NaN, not an infinity.
 ---@param value any
 ---@return boolean
 local function finite(value)
-  -- `value == value` is the NaN check, not a typo: NaN is the one value unequal to itself
+  -- `value == value` is the NaN test: NaN is the one value unequal to itself
   return type(value) == "number" and value == value
     and value > -math.huge and value < math.huge
 end
@@ -39,8 +35,7 @@ local function validName(value, maximum)
     and value:match("^[%w_:%-%.]+$") ~= nil
 end
 
---- Sanitise text a caller offers for display: control characters to spaces, then
---- truncate. Cosmetic text is never refused over a stray tab.
+--- Sanitise caller text for display: control characters to spaces, then truncate.
 ---@param value any
 ---@param maximum integer
 ---@return string|nil
@@ -53,11 +48,10 @@ local function displayText(value, maximum)
   return value
 end
 
---- Published so the status line, which reaches the page without passing through
---- an item, uses the same sanitiser.
+--- Sanitiser, shared with the status line.
 Model.display = displayText
 
---- Published for client/exports.lua, which validates a calling resource's name.
+--- Resource-name validator, shared with client/exports.lua.
 Model.validName = validName
 
 ---@param slider MenuSlider
@@ -112,8 +106,7 @@ end
 
 local normalizeItems
 
---- One item. `budget` is shared by the whole normalisation, so a wide tree and a
---- deep one are bounded by the same count.
+--- Normalise one item. `budget` is shared by the whole tree, wide or deep.
 ---@param item MenuItem
 ---@param index integer
 ---@param depth integer
@@ -170,7 +163,7 @@ local function normalizeItem(item, index, depth, budget)
     entry.items = children
     entry.title = displayText(item.title, MAX_LABEL) or label
     entry.value = displayText(item.value, MAX_VALUE)
-    -- Resolved when the screen is pushed: a later `update` rebuilds this list.
+    -- Resolved when the screen is pushed, not here: `update` rebuilds this list.
     entry.cursor = item.cursor
     return entry
   end
@@ -224,8 +217,6 @@ end
 ---@return MenuEntry[]|nil, string|nil
 normalizeItems = function(items, depth, budget)
   if type(items) ~= "table" then return nil, "items_must_be_a_table" end
-  -- Counted once, before any work: a caller handing over a thousand rows had two hundred
-  -- of them normalised before being told the list was too long.
   local total = #items
   if total > MAX_ROWS then return nil, "too_many_items" end
 
@@ -236,7 +227,7 @@ normalizeItems = function(items, depth, budget)
     list[index] = entry
   end
   if #list == 0 then return nil, "empty_menu" end
-  -- Only DISABLED rows stays allowed: "your garage is empty" is a real menu.
+  -- A screen of only disabled rows is allowed; a screen of only separators is not.
   local substantial = false
   for index = 1, #list do
     if list[index].kind ~= "separator" then substantial = true break end
@@ -251,8 +242,7 @@ local function selectable(entry)
   return entry ~= nil and entry.kind ~= "separator" and not entry.disabled
 end
 
---- Where the cursor starts: the row a caller named, or the first it can land on.
---- Advisory -- an unresolvable value falls back rather than refusing the menu.
+--- Where the cursor starts: the row a caller named, or the first selectable one.
 ---@param items MenuEntry[]
 ---@param wanted MenuCursor|nil
 ---@return integer
@@ -329,8 +319,8 @@ function Model.build(owner, generation, spec)
   return record
 end
 
---- Re-walk the stack of `record` onto a freshly built `items` tree, by id, so an
---- update does not throw the player back to the root.
+--- Re-walk the stack onto a freshly built tree, by id, so an update keeps the
+--- player's screen.
 ---@param record MenuRecord
 ---@param items MenuEntry[]
 ---@param title string
@@ -353,7 +343,7 @@ local function rewalk(record, items, title)
     stack[#stack + 1] = child
     cursor = found.items
   end
-  -- Through `cursorIndex` too: `Model.settle` only reaches the TOP frame.
+  -- Through `cursorIndex` too: `Model.settle` only reaches the top frame.
   stack[1].index = cursorIndex(items, math.min(record.stack[1].index, #items))
   return stack
 end
@@ -379,7 +369,6 @@ function Model.rebuild(record, spec)
     if not validName(spec.event, 96) then return false, "invalid_menu_event" end
     record.event = spec.event
   end
-  -- Bounded as in `Model.build`: an oversized table must not arrive by update.
   if spec.data ~= nil then
     if type(spec.data) ~= "table" then return false, "invalid_menu_data" end
     if not fitsInPayload(spec.data, 1, { data = 0 }) then return false, "menu_data_too_large" end
@@ -473,7 +462,7 @@ function Model.value(entry)
   elseif kind == "slider" then
     local slider = entry.slider
     local number = slider.value
-    -- Floored: tostring(70.0) is "70.0", and "VOLUME 70.0%" reads as a bug.
+    -- Whole values print without a decimal: "VOLUME 70.0%" reads as a bug.
     local text = number % 1 == 0 and tostring(math.floor(number)) or string.format("%.2f", number)
     return text .. slider.suffix
   end
@@ -492,8 +481,7 @@ function Model.raw(entry)
   return entry.value
 end
 
---- Does this row hold a value LEFT and RIGHT move? Not the same question as
---- `adjust`, which reports whether something changed.
+--- Does this row hold a value LEFT and RIGHT move?
 ---@param entry MenuEntry|nil
 ---@return boolean
 function Model.holdsValue(entry)
@@ -533,8 +521,7 @@ function Model.adjust(entry, delta)
   return false
 end
 
---- Which slice of a long list is on screen, with the cursor near the middle of
---- the window except at the two ends.
+--- Which slice of a long list is on screen, cursor near the middle of the window.
 ---@param index integer
 ---@param total integer
 ---@param rows integer
@@ -547,7 +534,7 @@ local function windowFirst(index, total, rows)
   return first
 end
 
---- The breadcrumb. Titles, not ids: a player reads it.
+--- The breadcrumb, built from the stack's titles.
 ---@param record MenuRecord
 ---@return string
 local function trail(record)
@@ -559,8 +546,7 @@ local function trail(record)
   return table.concat(parts, " / ")
 end
 
---- Everything the page needs for one frame: a WINDOW of rows, never the whole
---- list, which past about a hundred rows would be dropped by the host in silence.
+--- Everything the page needs for one frame: a window of rows, never the whole list.
 ---@param record MenuRecord
 ---@return MenuView|nil
 function Model.view(record)
@@ -577,7 +563,7 @@ function Model.view(record)
     window[index - first + 1] = {
       label = entry.label,
       value = Model.value(entry),
-      -- nil rather than false throughout: an absent field costs no value node.
+      -- nil rather than false: an absent field costs no value node.
       arrow = kind == "submenu" or nil,
       spin = (kind == "choices" or kind == "slider" or kind == "toggle") or nil,
       rule = kind == "separator" or nil,
@@ -595,7 +581,7 @@ function Model.view(record)
     index = top.index,
     depth = #record.stack,
     hint = selected and selected.description or nil,
-    -- Only the FAILURE flag crosses: `a and a.ok or nil` collapses a false in Lua.
+    -- Only the failure flag crosses: `a and a.ok or nil` would collapse a false.
     status = record.status and record.status.text or nil,
     statusBad = record.status ~= nil and not record.status.ok or nil,
   }
@@ -620,7 +606,7 @@ function Model.payload(record, entry, action)
     data = entry and entry.data or nil,
     menuData = record.data,
   }
-  -- Assigned, not folded above: `x and raw(x) or nil` collapses a FALSE toggle.
+  -- Assigned, not folded above: `x and raw(x) or nil` would collapse a false toggle.
   if entry ~= nil then payload.value = Model.raw(entry) end
   return payload
 end
