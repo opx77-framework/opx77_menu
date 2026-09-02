@@ -1,17 +1,17 @@
---- opx77_menu -- the model: a validated tree, the navigation stack, and what the
---- page should draw. Touches neither the page, the keyboard nor the network.
+--- The model: the validated tree, the navigation stack, and the view.
 
 OpxMenu = OpxMenu or {}
 
-OpxMenu.VERSION = "0.1.0"
+--- Mirrors `version` in open77.lua, which no Lua code can read; a release moves both lines.
+OpxMenu.VERSION = "0.2.0"
 
 local Config = OPX_MENU_CONFIG
+local Text = OpxMenu.Text
 
 local Model = {}
 OpxMenu.model = Model
 
--- The host drops any event past 1024 value nodes in silence, and `data` rides
--- in every one.
+-- The host silently drops any event past 1024 value nodes, and `data` rides in every one.
 local MAX_NODES = 400
 
 local MAX_DATA_NODES = 64
@@ -23,13 +23,11 @@ local MAX_LABEL = 96
 local MAX_VALUE = 48
 local MAX_DESCRIPTION = 160
 
---- A finite number: a number, not NaN, and neither infinity. One predicate, spelled the same
---- way in every resource of this framework; the coercing form that answers with the number
---- rather than a verdict is called `finiteNumber`.
+--- A finite number: not NaN, not an infinity.
 ---@param value any
 ---@return boolean
 local function finite(value)
-  -- `value == value` is the NaN check, not a typo: NaN is the one value unequal to itself
+  -- `value == value` is the NaN test: NaN is the one value unequal to itself
   return type(value) == "number" and value == value
     and value > -math.huge and value < math.huge
 end
@@ -39,25 +37,21 @@ local function validName(value, maximum)
     and value:match("^[%w_:%-%.]+$") ~= nil
 end
 
---- Sanitise text a caller offers for display: control characters to spaces, then
---- truncate. Cosmetic text is never refused over a stray tab.
+--- Sanitiser, shared with client/main.lua's status line.
+Model.display = Text.clean
+
+--- Text the status line accepts. A table would sanitise to nil and silently clear the
+--- line, so every path that writes it refuses one.
 ---@param value any
----@param maximum integer
----@return string|nil
-local function displayText(value, maximum)
-  if value == nil then return nil end
-  if type(value) == "number" then value = tostring(value) end
-  if type(value) ~= "string" then return nil end
-  value = value:gsub("[%c]", " ")
-  if #value > maximum then value = value:sub(1, maximum) end
-  return value
+---@return boolean
+local function validStatus(value)
+  return value == nil or type(value) == "string" or type(value) == "number"
 end
 
---- Published so the status line, which reaches the page without passing through
---- an item, uses the same sanitiser.
-Model.display = displayText
+--- Status-line validator, shared with client/exports.lua.
+Model.validStatus = validStatus
 
---- Published for client/exports.lua, which validates a calling resource's name.
+--- Resource-name validator, shared with client/exports.lua.
 Model.validName = validName
 
 ---@param slider MenuSlider
@@ -72,7 +66,7 @@ local function normalizeSlider(slider)
   local value = finite(slider.value) and slider.value + 0.0 or minimum
   if value < minimum then value = minimum end
   if value > maximum then value = maximum end
-  local suffix = displayText(slider.suffix, 8) or ""
+  local suffix = Text.clean(slider.suffix, 8) or ""
   return { min = minimum, max = maximum, step = step, value = value, suffix = suffix }
 end
 
@@ -83,7 +77,7 @@ local function normalizeChoices(item)
   if type(raw) ~= "table" then return nil, "invalid_choices" end
   local labels = {}
   for index = 1, #raw do
-    local label = displayText(raw[index], MAX_VALUE)
+    local label = Text.clean(raw[index], MAX_VALUE)
     if label == nil then return nil, "invalid_choice" end
     labels[index] = label
   end
@@ -112,8 +106,7 @@ end
 
 local normalizeItems
 
---- One item. `budget` is shared by the whole normalisation, so a wide tree and a
---- deep one are bounded by the same count.
+--- Normalise one item. `budget` is shared by the whole tree, wide or deep.
 ---@param item MenuItem
 ---@param index integer
 ---@param depth integer
@@ -133,16 +126,16 @@ local function normalizeItem(item, index, depth, budget)
   end
 
   if item.separator == true then
-    return { id = id, kind = "separator", label = displayText(item.label, MAX_LABEL) or "" }
+    return { id = id, kind = "separator", label = Text.clean(item.label, MAX_LABEL) or "" }
   end
 
-  local label = displayText(item.label or item.text, MAX_LABEL)
+  local label = Text.clean(item.label or item.text, MAX_LABEL)
   if label == nil or label == "" then return nil, "invalid_item_label" end
 
   if item.event ~= nil and not validName(item.event, 96) then
     return nil, "invalid_item_event"
   end
-  if item.description ~= nil and displayText(item.description, MAX_DESCRIPTION) == nil then
+  if item.description ~= nil and Text.clean(item.description, MAX_DESCRIPTION) == nil then
     return nil, "invalid_item_description"
   end
 
@@ -154,7 +147,7 @@ local function normalizeItem(item, index, depth, budget)
   local entry = {
     id = id,
     label = label,
-    description = displayText(item.description, MAX_DESCRIPTION),
+    description = Text.clean(item.description, MAX_DESCRIPTION),
     event = item.event,
     data = item.data,
     disabled = item.disabled == true,
@@ -168,9 +161,9 @@ local function normalizeItem(item, index, depth, budget)
     if children == nil then return nil, reason end
     entry.kind = "submenu"
     entry.items = children
-    entry.title = displayText(item.title, MAX_LABEL) or label
-    entry.value = displayText(item.value, MAX_VALUE)
-    -- Resolved when the screen is pushed: a later `update` rebuilds this list.
+    entry.title = Text.clean(item.title, MAX_LABEL) or label
+    entry.value = Text.clean(item.value, MAX_VALUE)
+    -- Resolved when the screen is pushed, not here: `update` rebuilds this list.
     entry.cursor = item.cursor
     return entry
   end
@@ -179,8 +172,8 @@ local function normalizeItem(item, index, depth, budget)
     entry.kind = "toggle"
     entry.on = item.toggle
     entry.labels = {
-      on = displayText(item.onLabel, MAX_VALUE) or "ON",
-      off = displayText(item.offLabel, MAX_VALUE) or "OFF",
+      on = Text.clean(item.onLabel, MAX_VALUE) or "ON",
+      off = Text.clean(item.offLabel, MAX_VALUE) or "OFF",
     }
     return entry
   end
@@ -214,7 +207,7 @@ local function normalizeItem(item, index, depth, budget)
   end
 
   entry.kind = "action"
-  entry.value = displayText(item.value, MAX_VALUE)
+  entry.value = Text.clean(item.value, MAX_VALUE)
   return entry
 end
 
@@ -224,8 +217,6 @@ end
 ---@return MenuEntry[]|nil, string|nil
 normalizeItems = function(items, depth, budget)
   if type(items) ~= "table" then return nil, "items_must_be_a_table" end
-  -- Counted once, before any work: a caller handing over a thousand rows had two hundred
-  -- of them normalised before being told the list was too long.
   local total = #items
   if total > MAX_ROWS then return nil, "too_many_items" end
 
@@ -236,7 +227,7 @@ normalizeItems = function(items, depth, budget)
     list[index] = entry
   end
   if #list == 0 then return nil, "empty_menu" end
-  -- Only DISABLED rows stays allowed: "your garage is empty" is a real menu.
+  -- A screen of only disabled rows is allowed; a screen of only separators is not.
   local substantial = false
   for index = 1, #list do
     if list[index].kind ~= "separator" then substantial = true break end
@@ -251,8 +242,7 @@ local function selectable(entry)
   return entry ~= nil and entry.kind ~= "separator" and not entry.disabled
 end
 
---- Where the cursor starts: the row a caller named, or the first it can land on.
---- Advisory -- an unresolvable value falls back rather than refusing the menu.
+--- Where the cursor starts: the row a caller named, or the first selectable one.
 ---@param items MenuEntry[]
 ---@param wanted MenuCursor|nil
 ---@return integer
@@ -298,12 +288,14 @@ function Model.build(owner, generation, spec)
     return nil, "invalid_menu_id"
   end
 
-  local title = displayText(spec.title, MAX_LABEL)
+  local title = Text.clean(spec.title, MAX_LABEL)
   if title == nil or title == "" then title = owner:upper() end
 
   if spec.event ~= nil and not validName(spec.event, 96) then
     return nil, "invalid_menu_event"
   end
+
+  if not validStatus(spec.status) then return nil, "invalid_status" end
 
   if spec.data ~= nil then
     if type(spec.data) ~= "table" then return nil, "invalid_menu_data" end
@@ -329,8 +321,8 @@ function Model.build(owner, generation, spec)
   return record
 end
 
---- Re-walk the stack of `record` onto a freshly built `items` tree, by id, so an
---- update does not throw the player back to the root.
+--- Re-walk the stack onto a freshly built tree, by id, so an update keeps the
+--- player's screen.
 ---@param record MenuRecord
 ---@param items MenuEntry[]
 ---@param title string
@@ -353,7 +345,7 @@ local function rewalk(record, items, title)
     stack[#stack + 1] = child
     cursor = found.items
   end
-  -- Through `cursorIndex` too: `Model.settle` only reaches the TOP frame.
+  -- Through `cursorIndex` too: `Model.settle` only reaches the top frame.
   stack[1].index = cursorIndex(items, math.min(record.stack[1].index, #items))
   return stack
 end
@@ -364,6 +356,8 @@ end
 ---@return boolean, string|nil
 function Model.rebuild(record, spec)
   if type(spec) ~= "table" then return false, "spec_must_be_a_table" end
+  -- Checked before anything is written: a refused patch must change nothing.
+  if not validStatus(spec.status) then return false, "invalid_status" end
   local items, title = record.items, record.title
   if spec.items ~= nil then
     local budget = { nodes = 0 }
@@ -373,13 +367,12 @@ function Model.rebuild(record, spec)
     record.nodes = budget.nodes
   end
   if spec.title ~= nil then
-    title = displayText(spec.title, MAX_LABEL) or title
+    title = Text.clean(spec.title, MAX_LABEL) or title
   end
   if spec.event ~= nil then
     if not validName(spec.event, 96) then return false, "invalid_menu_event" end
     record.event = spec.event
   end
-  -- Bounded as in `Model.build`: an oversized table must not arrive by update.
   if spec.data ~= nil then
     if type(spec.data) ~= "table" then return false, "invalid_menu_data" end
     if not fitsInPayload(spec.data, 1, { data = 0 }) then return false, "menu_data_too_large" end
@@ -473,7 +466,7 @@ function Model.value(entry)
   elseif kind == "slider" then
     local slider = entry.slider
     local number = slider.value
-    -- Floored: tostring(70.0) is "70.0", and "VOLUME 70.0%" reads as a bug.
+    -- Whole values print without a decimal: "VOLUME 70.0%" reads as a bug.
     local text = number % 1 == 0 and tostring(math.floor(number)) or string.format("%.2f", number)
     return text .. slider.suffix
   end
@@ -492,8 +485,7 @@ function Model.raw(entry)
   return entry.value
 end
 
---- Does this row hold a value LEFT and RIGHT move? Not the same question as
---- `adjust`, which reports whether something changed.
+--- Does this row hold a value LEFT and RIGHT move?
 ---@param entry MenuEntry|nil
 ---@return boolean
 function Model.holdsValue(entry)
@@ -533,8 +525,7 @@ function Model.adjust(entry, delta)
   return false
 end
 
---- Which slice of a long list is on screen, with the cursor near the middle of
---- the window except at the two ends.
+--- Which slice of a long list is on screen, cursor near the middle of the window.
 ---@param index integer
 ---@param total integer
 ---@param rows integer
@@ -547,7 +538,7 @@ local function windowFirst(index, total, rows)
   return first
 end
 
---- The breadcrumb. Titles, not ids: a player reads it.
+--- The breadcrumb, built from the stack's titles.
 ---@param record MenuRecord
 ---@return string
 local function trail(record)
@@ -559,8 +550,7 @@ local function trail(record)
   return table.concat(parts, " / ")
 end
 
---- Everything the page needs for one frame: a WINDOW of rows, never the whole
---- list, which past about a hundred rows would be dropped by the host in silence.
+--- Everything the page needs for one frame: a window of rows, never the whole list.
 ---@param record MenuRecord
 ---@return MenuView|nil
 function Model.view(record)
@@ -577,7 +567,7 @@ function Model.view(record)
     window[index - first + 1] = {
       label = entry.label,
       value = Model.value(entry),
-      -- nil rather than false throughout: an absent field costs no value node.
+      -- nil rather than false: an absent field costs no value node.
       arrow = kind == "submenu" or nil,
       spin = (kind == "choices" or kind == "slider" or kind == "toggle") or nil,
       rule = kind == "separator" or nil,
@@ -595,7 +585,7 @@ function Model.view(record)
     index = top.index,
     depth = #record.stack,
     hint = selected and selected.description or nil,
-    -- Only the FAILURE flag crosses: `a and a.ok or nil` collapses a false in Lua.
+    -- Only the failure flag crosses: `a and a.ok or nil` would collapse a false.
     status = record.status and record.status.text or nil,
     statusBad = record.status ~= nil and not record.status.ok or nil,
   }
@@ -620,7 +610,7 @@ function Model.payload(record, entry, action)
     data = entry and entry.data or nil,
     menuData = record.data,
   }
-  -- Assigned, not folded above: `x and raw(x) or nil` collapses a FALSE toggle.
+  -- Assigned, not folded above: `x and raw(x) or nil` would collapse a false toggle.
   if entry ~= nil then payload.value = Model.raw(entry) end
   return payload
 end

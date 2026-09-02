@@ -25,7 +25,7 @@
 ---@field event string|nil         the default event for every item
 ---@field data table|nil           opaque, echoed in every payload as `menuData`
 ---@field cursor MenuCursor|nil  where the cursor starts. Open and push only
----@field status string|nil        a transient line under the list
+---@field status string|nil        a transient line under the list. Refused if not text
 ---@field closeOnSelect boolean|nil  close after any item fires. Default false
 ---@field steal boolean|nil        take over another resource's open menu
 
@@ -59,9 +59,8 @@
 ---@field value number|nil   default `min`
 ---@field suffix string|nil  drawn after the number, e.g. "%"
 
---- The payload of every event this resource raises: the item's own `event` if it
---- has one, the menu's otherwise, and always `GLOBAL_EVENT` beside it -- `opx77:menu`,
---- a constant in client/main.lua so that one listener can watch every menu.
+--- The payload of every event this resource raises. Sent to the item's `event` if it has
+--- one, the menu's otherwise, and always to `opx77:menu` beside it.
 ---@class MenuPayload
 ---@field menu string              the menu's id
 ---@field handle MenuHandle
@@ -76,8 +75,8 @@
 ---@field menuData table|nil       the menu's `data`
 ---@field reason string|nil        on `close` only
 
---- Every export answers one of these and never raises. `error` is a stable code
---- meant for branching, never shown to a player.
+--- Every export answers one of these and never raises. `error` is a stable code,
+--- never player-facing text.
 ---@class MenuResponse
 ---@field ok boolean
 ---@field error string|nil
@@ -85,7 +84,12 @@
 ---@class MenuOpened : MenuResponse
 ---@field handle MenuHandle|nil
 ---@field id string|nil
----@field items integer|nil  how many nodes the whole tree came to
+---@field nodes integer|nil  how many nodes the whole tree came to
+
+--- What `keys` answers.
+---@class MenuKeys : MenuResponse
+---@field backend string                 "poll", or "none" when the keyboard cannot be read
+---@field keys table<string, string>     action -> the key that drives it
 
 --- What `state` answers.
 ---@class MenuState : MenuResponse
@@ -122,8 +126,7 @@
 ---@field choices string[]|nil
 ---@field slider MenuSlider|nil
 
---- One screen. `id` names the item that opened it, which is what lets `update`
---- put the player back where they were.
+--- One screen. `id` names the item that opened it, so `update` can re-walk the stack.
 ---@class MenuFrame
 ---@field items MenuEntry[]
 ---@field title string
@@ -145,14 +148,13 @@
 ---@field stack MenuFrame[]
 ---@field status MenuStatus|nil
 
---- A transient line under the list. Clears itself after `STATUS_MS`, a constant in
---- client/main.lua.
+--- A transient line under the list, cleared automatically after a few seconds.
 ---@class MenuStatus
 ---@field text string
 ---@field ok boolean
 ---@field atMs integer
 
---- One frame, as the page receives it. A window of rows, never the whole list.
+--- One frame, as the page receives it: a window of rows, never the whole list.
 ---@class MenuView
 ---@field title string
 ---@field trail string|nil
@@ -165,8 +167,7 @@
 ---@field status string|nil
 ---@field statusBad true|nil  absent when the line reports a success
 
---- Absent flags are `nil` rather than `false`: an absent field costs no value
---- node against the host's 1024-node ceiling.
+--- One row as the page receives it. Absent flags are `nil`, never `false`.
 ---@class MenuRow
 ---@field label string
 ---@field value string|nil

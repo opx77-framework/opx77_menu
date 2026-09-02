@@ -1,4 +1,4 @@
---- opx77_menu -- the surface, the input thread, and the one open menu.
+--- The surface, the input thread, and the one open menu.
 
 OpxMenu = OpxMenu or {}
 
@@ -13,7 +13,7 @@ local RESOURCE = GetCurrentResourceName()
 
 local page
 
---- True once WebUI.create has refused; the exports read it and refuse too.
+--- True once WebUI.create has refused; the exports refuse too.
 local surfaceFailed = false
 local pageReady = false
 
@@ -23,23 +23,19 @@ local record
 
 local nextHandle = 1
 
---- owner -> the generation we last saw it at, so a reloaded caller's menu goes
---- away with the code that opened it.
+--- owner -> the generation last seen, so a reloaded caller's menu goes away with it.
 local ownerGenerations = {}
-local nextSweepMs = 0
-local SWEEP_MS = 1000
+local nextOwnerSweepMs = 0
+local OWNER_SWEEP_MS = 1000
 
---- How much of the viewport height the list may take before it clips. Follows VISIBLE_ROWS
---- rather than being set beside it, where the two could disagree.
+--- How much of the viewport height the list may take before it clips.
 local MAX_HEIGHT_VH = 56
 
---- How long the line under the list stays up, and how often the loop runs while no menu is.
---- Both are cadence, not policy.
+--- How long the status line stays up, and the loop's idle period while no menu is open.
 local STATUS_MS = 6000
 local IDLE_MS = 250
 
---- Raised beside each menu's own event, so one listener can watch every menu. A name, not a
---- setting: a caller that wants a different one listens on its own.
+--- Raised beside each menu's own event, so one listener can watch every menu.
 local GLOBAL_EVENT = "opx77:menu"
 
 local MAX_STATUS = 120
@@ -47,15 +43,20 @@ local MAX_STATUS = 120
 --- Set by anything that changes what is on screen; consumed by the tick.
 local dirty = false
 
---- `Open77.time.monotonic()` is SECONDS on the client, as the API reference and the
---- host bootstrap both state; every shipped client resource treats it as seconds.
+--- The scheduler clock in milliseconds; `monotonic` answers SECONDS. A non-finite reading is
+--- dropped rather than propagated: a NaN would expire nothing, an infinity everything.
 ---@return integer
+local lastMs = 0
 local function nowMs()
-  return math.floor(Open77.time.monotonic() * 1000)
+  local read, seconds = pcall(Open77.time.monotonic)
+  if read and type(seconds) == "number" and seconds == seconds and
+    seconds >= 0 and seconds < math.huge then
+    lastMs = math.floor(seconds * 1000)
+  end
+  return lastMs
 end
 
---- Raise one payload for a record named explicitly rather than read off the
---- module: a handler may re-enter this file, and must not find `record` set.
+--- Raise one payload for an explicitly named record; a handler may re-enter this file.
 ---@param owned MenuRecord
 ---@param entry MenuEntry|nil
 ---@param action MenuAction
@@ -67,10 +68,7 @@ local function dispatch(owned, entry, action, extra)
   end
   local event = (entry and entry.event) or owned.event
   if event then TriggerEvent(event, payload) end
-  local global = GLOBAL_EVENT
-  if global and global ~= false and global ~= event then
-    TriggerEvent(global, payload)
-  end
+  if GLOBAL_EVENT ~= event then TriggerEvent(GLOBAL_EVENT, payload) end
 end
 
 ---@param entry MenuEntry|nil
@@ -81,15 +79,32 @@ local function emit(entry, action, extra)
   dispatch(record, entry, action, extra)
 end
 
---- Where the strip sits, how wide it is, and how much of it is drawn. Sent once at ready:
---- none of it changes while the resource runs.
-local function sendConfig()
+--- True while `page:send` is failing, so a dead surface is logged once, not every frame.
+local sendFailing = false
+
+--- One write to the page. Guarded: `page:send` raises, and both the exports and the input
+--- thread reach it.
+---@param name string
+---@param payload table
+local function send(name, payload)
   if page == nil or not pageReady then return end
-  page:send("menu:config", {
+  local ok, reason = pcall(page.send, page, name, payload)
+  if ok then
+    sendFailing = false
+    return
+  end
+  if not sendFailing then
+    Open77.log.error(("the page write %s failed: %s"):format(name, tostring(reason)))
+  end
+  sendFailing = true
+end
+
+--- Send the layout to the page. Once, at ready: none of it changes while the resource runs.
+local function sendConfig()
+  send("menu:config", {
     anchor = Config.ANCHOR,
     width = Config.WIDTH,
     maxHeight = MAX_HEIGHT_VH,
-    rows = Config.VISIBLE_ROWS,
   })
 end
 
@@ -97,12 +112,12 @@ local function draw()
   dirty = false
   if page == nil or not pageReady then return end
   if record == nil then
-    page:send("menu:hide", {})
+    send("menu:hide", {})
     return
   end
   local view = Model.view(record)
   if view == nil then return end
-  page:send("menu:frame", view)
+  send("menu:frame", view)
 end
 
 --- Note the caller's generation, and drop its menu if it has reloaded since.
@@ -117,7 +132,7 @@ local function noteOwner(owner, generation)
   ownerGenerations[owner] = generation
 end
 
---- Open a menu, replacing this owner's own or -- with `spec.steal` -- another's.
+--- Open a menu, replacing this owner's own or, with `spec.steal`, another's.
 ---@param owner string
 ---@param generation integer
 ---@param spec MenuSpec
@@ -133,7 +148,7 @@ function Runtime.open(owner, generation, spec)
   if built == nil then return nil, reason end
 
   if record ~= nil then
-    -- Closed, not dropped: the previous owner is entitled to hear it is gone.
+    -- Closed, not dropped: the previous owner is told its menu is gone.
     Runtime.close(record.handle, record.owner == owner and "reopened" or "superseded")
   end
 
@@ -159,7 +174,7 @@ function Runtime.update(handle, spec)
   local ok, reason = Model.rebuild(record, spec)
   if not ok then return false, reason end
   Model.settle(record)
-  -- After the rebuild: `setStatus` draws, which is the redraw the rebuild needs.
+  -- `setStatus` draws, which is the redraw the rebuild needs.
   if spec.status ~= nil then
     Runtime.setStatus(spec.status)
   else
@@ -182,8 +197,7 @@ function Runtime.close(handle, reason)
   return true, closing.handle
 end
 
---- Write, or clear, the transient line under the list. Clearing is `nil`, never
---- an empty string.
+--- Write, or clear with `nil`, the transient line under the list.
 ---@param text string|nil
 ---@param ok boolean|nil  false marks a failure. Default true
 ---@return boolean
@@ -217,7 +231,7 @@ function Runtime.snapshot()
     itemId = entry and entry.id or nil,
     label = entry and entry.label or nil,
   }
-  -- Assigned, not folded above: `x and raw(x) or nil` collapses a false toggle.
+  -- Assigned, not folded above: `x and raw(x) or nil` would collapse a false toggle.
   if entry ~= nil then result.value = Model.raw(entry) end
   return result
 end
@@ -258,7 +272,6 @@ local function activate()
   end
 
   if kind == "toggle" or kind == "choices" or kind == "slider" then
-    -- ENTER advances a control rather than doing nothing on it.
     if Model.adjust(entry, 1) then
       emit(entry, "change")
       return true
@@ -266,7 +279,7 @@ local function activate()
     return false
   end
 
-  -- Read BEFORE the event: a handler runs inline and may close this menu.
+  -- Read before the event: a handler runs inline and may close this menu.
   local closeAfter = entry.close or record.closeOnSelect
   local handle = record.handle
   emit(entry, "select")
@@ -278,12 +291,12 @@ local function activate()
   return true
 end
 
---- One tick of the input thread: six level reads and the edge tests.
+--- One tick of the input thread.
 ---@param atMs integer  the frame's clock, read once by the caller
 local function tick(atMs)
   if record == nil then return end
 
-  -- Re-primed so nothing typed into the surface that owns the keyboard leaks.
+  -- Re-primed so nothing typed into the surface that owns the keyboard leaks in.
   if Input.captured() then
     Input.prime()
     return
@@ -307,8 +320,7 @@ local function tick(atMs)
 
   if Input.poll("LEFT", atMs) then
     local entry = Model.item(record)
-    -- The row's KIND, not whether the value moved: a slider at its minimum is
-    -- false, and falling through would leave the screen under the player.
+    -- Kind, not whether the value moved: a slider at its minimum must not pop the screen.
     if Model.holdsValue(entry) then
       if Model.adjust(entry, -1) then
         emit(entry, "change")
@@ -339,7 +351,7 @@ local function tick(atMs)
   if dirty then draw() end
 end
 
---- The status line clears itself after `STATUS_MS`.
+--- Clear the status line once `STATUS_MS` has passed.
 ---@param atMs integer
 local function expireStatus(atMs)
   if record == nil or record.status == nil then return end
@@ -348,13 +360,12 @@ local function expireStatus(atMs)
   draw()
 end
 
---- The net under a caller that crashed, was stopped, or reloaded mid-menu. It
---- runs once a SWEEP_MS, so a menu outlives its owner by up to that.
+--- Close the menu when its owner has stopped or reloaded. Runs once per `SWEEP_MS`.
 ---@param atMs integer
 local function sweep(atMs)
   if record == nil then return end
-  if atMs < nextSweepMs then return end
-  nextSweepMs = atMs + SWEEP_MS
+  if atMs < nextOwnerSweepMs then return end
+  nextOwnerSweepMs = atMs + OWNER_SWEEP_MS
   local owner = record.owner
   local running = GetResourceState(owner) == "running"
   local generation
@@ -366,11 +377,33 @@ local function sweep(atMs)
   end
 end
 
--- The plugin swallows Escape in the window procedure and raises this instead.
+--- One frame of the open menu. Every call it makes is a host call, so the thread runs it
+--- under `pcall`: a raise here would end input for the session.
+local function frameTick()
+  -- One clock read per frame: `monotonic` is a host call.
+  local atMs = nowMs()
+  tick(atMs)
+  expireStatus(atMs)
+  sweep(atMs)
+end
+
+--- One pass of a forever-thread. A raise from a host call would otherwise end that loop for
+--- the session, so it is logged once per run of failures and the loop carries on.
+---@param label string
+---@param body fun()
+---@param failing boolean  whether the previous pass already failed
+---@return boolean failing
+local function guarded(label, body, failing)
+  local ok, reason = pcall(body)
+  if ok then return false end
+  if not failing then Open77.log.error(("%s failed: %s"):format(label, tostring(reason))) end
+  return true
+end
+
+-- The plugin swallows Escape and raises this instead.
 AddEventHandler("open77:pauseKey", function()
   if record ~= nil then Runtime.close(record.handle, "pause") end
 end)
-
 
 ---@return boolean
 function Runtime.unavailable()
@@ -395,7 +428,7 @@ AddEventHandler("onClientResourceStart", function(name)
   local reason
   page, reason = WebUI.create({
     entry = "web/index.html",
-    -- "hud", NOT "menu": a hud surface is never focused, so it cannot take input.
+    -- "hud", not "menu": a hud surface is never focused, so it cannot take input.
     layer = "hud",
     width = 1920,
     height = 1080,
@@ -403,12 +436,10 @@ AddEventHandler("onClientResourceStart", function(name)
     -- Above chat (700) and the toasts (720), below open77_admin's strip (730).
     zIndex = 725,
     transparent = true,
-    -- Created VISIBLE: a surface created hidden never uploads a frame once shown.
+    -- Created visible: a surface created hidden never uploads a frame once shown.
     visible = true,
   })
   if page == nil then
-    -- The exports are already published and the sweep lives in the thread below,
-    -- so without this flag a caller is told `ok = true` for a menu nothing draws.
     Open77.log.error("WebUI surface failed: " .. tostring(reason))
     Open77.log.error("  the exports will refuse: there is nothing to draw on.")
     surfaceFailed = true
@@ -427,17 +458,14 @@ AddEventHandler("onClientResourceStart", function(name)
   end)
 
   CreateThread(function()
+    local failing = false
     while page ~= nil do
-      if record ~= nil then
-        -- One clock read for the frame. `monotonic` is a host call, and three of them per
-        -- frame asked the same question three times to get the same answer.
-        local atMs = nowMs()
-        tick(atMs)
-        expireStatus(atMs)
-        sweep(atMs)
-        Wait(0)
-      else
+      if record == nil then
         Wait(IDLE_MS)
+      else
+        failing = guarded("the menu frame", frameTick, failing)
+        -- Backed off while it fails: whatever raised will raise again next frame.
+        Wait(failing and IDLE_MS or 0)
       end
     end
   end)
