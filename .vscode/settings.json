@@ -14,7 +14,7 @@
   // open77.lua is a declarative manifest, not a script: the language server
   // would flag every line of it as an undefined global call.
   "Lua.diagnostics.ignoredFiles": "Disable",
-  "Lua.workspace.ignoreDir": [".git", "dist", "tools"],
+  "Lua.workspace.ignoreDir": [".git", "dist"],
 
   "search.exclude": {
     "**/.git": true

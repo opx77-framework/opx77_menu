@@ -25,7 +25,7 @@
 ---@field event string|nil         the default event for every item
 ---@field data table|nil           opaque, echoed in every payload as `menuData`
 ---@field cursor MenuCursor|nil  where the cursor starts. Open and push only
----@field status string|nil        a transient line under the list
+---@field status string|nil        a transient line under the list. Refused if not text
 ---@field closeOnSelect boolean|nil  close after any item fires. Default false
 ---@field steal boolean|nil        take over another resource's open menu
 
@@ -84,7 +84,12 @@
 ---@class MenuOpened : MenuResponse
 ---@field handle MenuHandle|nil
 ---@field id string|nil
----@field items integer|nil  how many nodes the whole tree came to
+---@field nodes integer|nil  how many nodes the whole tree came to
+
+--- What `keys` answers.
+---@class MenuKeys : MenuResponse
+---@field backend string                 "poll", or "none" when the keyboard cannot be read
+---@field keys table<string, string>     action -> the key that drives it
 
 --- What `state` answers.
 ---@class MenuState : MenuResponse

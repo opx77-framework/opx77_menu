@@ -1,13 +1,15 @@
 resource "opx77_menu"
-version "0.1.0"
+version "0.2.0"
 open77_version ">=0.0.1"
 auto_start true
 
 -- Swapping a live CEF surface mid-session is unstable, so a generation change reconnects.
 reload_policy "reconnect"
 
--- Load order is manifest order: config first, model before input, main before exports.
+-- Load order is manifest order: config and the text helpers first, model before input,
+-- main before exports.
 client_script "config.lua"
+shared_script "shared/text.lua"
 client_script "client/model.lua"
 client_script "client/input.lua"
 client_script "client/main.lua"

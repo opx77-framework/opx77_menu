@@ -1,4 +1,4 @@
---- opx77_menu -- the surface, the input thread, and the one open menu.
+--- The surface, the input thread, and the one open menu.
 
 OpxMenu = OpxMenu or {}
 
@@ -25,8 +25,8 @@ local nextHandle = 1
 
 --- owner -> the generation last seen, so a reloaded caller's menu goes away with it.
 local ownerGenerations = {}
-local nextSweepMs = 0
-local SWEEP_MS = 1000
+local nextOwnerSweepMs = 0
+local OWNER_SWEEP_MS = 1000
 
 --- How much of the viewport height the list may take before it clips.
 local MAX_HEIGHT_VH = 56
@@ -72,10 +72,29 @@ local function emit(entry, action, extra)
   dispatch(record, entry, action, extra)
 end
 
+--- True while `page:send` is failing, so a dead surface is logged once, not every frame.
+local sendFailing = false
+
+--- One write to the page. Guarded: `page:send` raises, and both the exports and the input
+--- thread reach it.
+---@param name string
+---@param payload table
+local function send(name, payload)
+  if page == nil or not pageReady then return end
+  local ok, reason = pcall(page.send, page, name, payload)
+  if ok then
+    sendFailing = false
+    return
+  end
+  if not sendFailing then
+    Open77.log.error(("the page write %s failed: %s"):format(name, tostring(reason)))
+  end
+  sendFailing = true
+end
+
 --- Send the layout to the page. Once, at ready: none of it changes while the resource runs.
 local function sendConfig()
-  if page == nil or not pageReady then return end
-  page:send("menu:config", {
+  send("menu:config", {
     anchor = Config.ANCHOR,
     width = Config.WIDTH,
     maxHeight = MAX_HEIGHT_VH,
@@ -86,12 +105,12 @@ local function draw()
   dirty = false
   if page == nil or not pageReady then return end
   if record == nil then
-    page:send("menu:hide", {})
+    send("menu:hide", {})
     return
   end
   local view = Model.view(record)
   if view == nil then return end
-  page:send("menu:frame", view)
+  send("menu:frame", view)
 end
 
 --- Note the caller's generation, and drop its menu if it has reloaded since.
@@ -338,8 +357,8 @@ end
 ---@param atMs integer
 local function sweep(atMs)
   if record == nil then return end
-  if atMs < nextSweepMs then return end
-  nextSweepMs = atMs + SWEEP_MS
+  if atMs < nextOwnerSweepMs then return end
+  nextOwnerSweepMs = atMs + OWNER_SWEEP_MS
   local owner = record.owner
   local running = GetResourceState(owner) == "running"
   local generation
@@ -349,6 +368,29 @@ local function sweep(atMs)
   if not running or (generation ~= nil and generation ~= record.generation) then
     Runtime.close(record.handle, "owner_stopped")
   end
+end
+
+--- One frame of the open menu. Every call it makes is a host call, so the thread runs it
+--- under `pcall`: a raise here would end input for the session.
+local function frameTick()
+  -- One clock read per frame: `monotonic` is a host call.
+  local atMs = nowMs()
+  tick(atMs)
+  expireStatus(atMs)
+  sweep(atMs)
+end
+
+--- One pass of a forever-thread. A raise from a host call would otherwise end that loop for
+--- the session, so it is logged once per run of failures and the loop carries on.
+---@param label string
+---@param body fun()
+---@param failing boolean  whether the previous pass already failed
+---@return boolean failing
+local function guarded(label, body, failing)
+  local ok, reason = pcall(body)
+  if ok then return false end
+  if not failing then Open77.log.error(("%s failed: %s"):format(label, tostring(reason))) end
+  return true
 end
 
 -- The plugin swallows Escape and raises this instead.
@@ -409,16 +451,14 @@ AddEventHandler("onClientResourceStart", function(name)
   end)
 
   CreateThread(function()
+    local failing = false
     while page ~= nil do
-      if record ~= nil then
-        -- One clock read per frame: `monotonic` is a host call.
-        local atMs = nowMs()
-        tick(atMs)
-        expireStatus(atMs)
-        sweep(atMs)
-        Wait(0)
-      else
+      if record == nil then
         Wait(IDLE_MS)
+      else
+        failing = guarded("the menu frame", frameTick, failing)
+        -- Backed off while it fails: whatever raised will raise again next frame.
+        Wait(failing and IDLE_MS or 0)
       end
     end
   end)

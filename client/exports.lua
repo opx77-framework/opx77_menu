@@ -1,8 +1,9 @@
---- opx77_menu -- the exports. Client-side only; a server resource calls from its
---- client half.
+--- The public export surface. Every call answers a MenuResponse and never raises; `error`
+--- is one of the codes in types.lua. Client-side only: called from a caller's client half.
 
 local Runtime = OpxMenu.runtime
 local validName = OpxMenu.model.validName
+local validStatus = OpxMenu.model.validStatus
 
 ---@param ok boolean
 ---@param values table|nil
@@ -13,8 +14,9 @@ local function response(ok, values)
   return values
 end
 
---- Who is calling, and at which generation of their code. Both come from the host.
----@return string|nil owner, string|integer generation  the reason, when owner is nil
+--- Who is calling, and at which generation of their code, both from the host.
+---@return string|nil owner
+---@return string|integer generation  the refusal reason when owner is nil
 local function caller()
   local owner = GetInvokingResource()
   local generation = GetInvokingResourceGeneration()
@@ -45,7 +47,7 @@ exports("open", function(spec)
 
   local record, reason = Runtime.open(owner, generation, spec)
   if record == nil then return response(false, { error = reason }) end
-  return response(true, { handle = record.handle, id = record.id, items = record.nodes })
+  return response(true, { handle = record.handle, id = record.id, nodes = record.nodes })
 end)
 
 --- Rebuild an open menu from a fresh spec, keeping the player where they are.
@@ -114,16 +116,13 @@ exports("status", function(text, ok)
   if not owner then return response(false, { error = generation }) end
   if Runtime.owner() == nil then return response(false, { error = "no_menu_open" }) end
   if Runtime.owner() ~= owner then return response(false, { error = "not_owner" }) end
-  -- Type-checked here: a table would sanitise to nil and silently clear the line.
-  if text ~= nil and type(text) ~= "string" and type(text) ~= "number" then
-    return response(false, { error = "invalid_status" })
-  end
+  if not validStatus(text) then return response(false, { error = "invalid_status" }) end
   Runtime.setStatus(text, ok)
   return response(true, {})
 end)
 
 --- The keys that drive the menu, for a caller printing its own hint.
----@return MenuResponse  `backend` string, `keys` table<string, string>
+---@return MenuKeys
 exports("keys", function()
   local keys = {}
   for action, key in pairs(OpxMenu.input.keys) do keys[action] = key end

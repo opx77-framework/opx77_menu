@@ -31,27 +31,30 @@ The exports are client-side only: a server resource calls them from its own clie
 | `keys` | the keys that drive the menu, for a caller printing its own hint |
 | `state` | whether a menu is open and whether it is yours |
 
-Types for every spec, payload and response are in `types.lua`.
+Every export answers `{ ok = boolean, error = string|nil }` and never raises; `error` is a stable code, never player-facing text. `open` adds `handle`, `id` and `nodes`, the size of the tree it built. Types for every spec, payload and response are in `types.lua`.
 
 ### Rules a caller needs
 
-- One menu at a time. `open` answers `menu_busy` when another resource owns the open one,
-  unless the spec sets `steal = true`.
+- One menu at a time. `open` answers `menu_busy` when another resource owns the open one, unless the spec sets `steal = true`.
 - `update`, `close` and `status` answer `not_owner` unless the open menu is yours.
 - `state` reports only `open` and `mine` for a menu you do not own.
 - The menu closes itself when its owner stops or reloads, within a second.
-- Every event is raised on the item's or menu's own `event` name and on `opx77:menu` beside
-  it, so one listener can watch every menu.
-- The `status` line clears itself after six seconds; `status(nil)` clears it now.
-- Limits, all refusals rather than truncations: 200 items per level, 8 levels deep, 400
-  items in the whole tree, and a `data` table of at most 64 nodes — keys count as well as
-  values — nested at most 4 deep.
-- Escape closes the open menu, and the menu stands down whenever another surface has the
-  keyboard.
+- The `status` line clears itself after six seconds; `status(nil)` clears it now. A `status`, on the export or in a spec, is text or a number: anything else answers `invalid_status` rather than silently clearing the line.
+- Limits, all refusals rather than truncations: 200 items per level, 8 levels deep, 400 nodes in the whole tree, and a `data` table of at most 64 nodes — keys count as well as values — nested at most 4 deep.
+- A label, value or description longer than its limit is cut to it, counted in characters so a cut never splits one.
+- Escape closes the open menu, and the menu stands down whenever another surface has the keyboard.
+
+## Events
+
+Every event is raised on the item's own `event` name, or the menu's where the item has none, and on `opx77:menu` beside it, so one listener can watch every menu. One payload shape for all of them, `MenuPayload` in `types.lua`: which menu, which row, and the row's current `value`. The `action` is `select`, `change`, `open`, `back` or `close`.
 
 ## Configuration
 
 `config.lua`. Anchor, width, and how many rows are drawn at once.
+
+## Locales
+
+There is no `locales/` here and no `LOCALE` in `config.lua`, and that is deliberate: this resource renders the caller's own text, in whatever language the caller chose. The only strings it owns are `Open77.log` lines and the error codes, and neither is translated.
 
 ## Community & Support
 

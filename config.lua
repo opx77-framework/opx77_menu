@@ -1,4 +1,4 @@
---- opx77_menu -- operator configuration.
+--- Configuration for opx77_menu: where the strip sits, and how big it is.
 
 OPX_MENU_CONFIG = {
   -- "top-left" | "top-right" | "left" | "right"; the last two are mid-height. No bottom

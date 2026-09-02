@@ -1,4 +1,4 @@
---- opx77_menu -- the keyboard: an edge-detecting state machine over `Open77.input.isDown`.
+--- The keyboard: an edge-detecting state machine over `Open77.input.isDown`.
 
 OpxMenu = OpxMenu or {}
 

@@ -1,10 +1,12 @@
---- opx77_menu -- the model: the validated tree, the navigation stack, and the view.
+--- The model: the validated tree, the navigation stack, and the view.
 
 OpxMenu = OpxMenu or {}
 
-OpxMenu.VERSION = "0.1.0"
+--- Mirrors `version` in open77.lua, which no Lua code can read; a release moves both lines.
+OpxMenu.VERSION = "0.2.0"
 
 local Config = OPX_MENU_CONFIG
+local Text = OpxMenu.Text
 
 local Model = {}
 OpxMenu.model = Model
@@ -35,21 +37,19 @@ local function validName(value, maximum)
     and value:match("^[%w_:%-%.]+$") ~= nil
 end
 
---- Sanitise caller text for display: control characters to spaces, then truncate.
+--- Sanitiser, shared with client/main.lua's status line.
+Model.display = Text.clean
+
+--- Text the status line accepts. A table would sanitise to nil and silently clear the
+--- line, so every path that writes it refuses one.
 ---@param value any
----@param maximum integer
----@return string|nil
-local function displayText(value, maximum)
-  if value == nil then return nil end
-  if type(value) == "number" then value = tostring(value) end
-  if type(value) ~= "string" then return nil end
-  value = value:gsub("[%c]", " ")
-  if #value > maximum then value = value:sub(1, maximum) end
-  return value
+---@return boolean
+local function validStatus(value)
+  return value == nil or type(value) == "string" or type(value) == "number"
 end
 
---- Sanitiser, shared with the status line.
-Model.display = displayText
+--- Status-line validator, shared with client/exports.lua.
+Model.validStatus = validStatus
 
 --- Resource-name validator, shared with client/exports.lua.
 Model.validName = validName
@@ -66,7 +66,7 @@ local function normalizeSlider(slider)
   local value = finite(slider.value) and slider.value + 0.0 or minimum
   if value < minimum then value = minimum end
   if value > maximum then value = maximum end
-  local suffix = displayText(slider.suffix, 8) or ""
+  local suffix = Text.clean(slider.suffix, 8) or ""
   return { min = minimum, max = maximum, step = step, value = value, suffix = suffix }
 end
 
@@ -77,7 +77,7 @@ local function normalizeChoices(item)
   if type(raw) ~= "table" then return nil, "invalid_choices" end
   local labels = {}
   for index = 1, #raw do
-    local label = displayText(raw[index], MAX_VALUE)
+    local label = Text.clean(raw[index], MAX_VALUE)
     if label == nil then return nil, "invalid_choice" end
     labels[index] = label
   end
@@ -126,16 +126,16 @@ local function normalizeItem(item, index, depth, budget)
   end
 
   if item.separator == true then
-    return { id = id, kind = "separator", label = displayText(item.label, MAX_LABEL) or "" }
+    return { id = id, kind = "separator", label = Text.clean(item.label, MAX_LABEL) or "" }
   end
 
-  local label = displayText(item.label or item.text, MAX_LABEL)
+  local label = Text.clean(item.label or item.text, MAX_LABEL)
   if label == nil or label == "" then return nil, "invalid_item_label" end
 
   if item.event ~= nil and not validName(item.event, 96) then
     return nil, "invalid_item_event"
   end
-  if item.description ~= nil and displayText(item.description, MAX_DESCRIPTION) == nil then
+  if item.description ~= nil and Text.clean(item.description, MAX_DESCRIPTION) == nil then
     return nil, "invalid_item_description"
   end
 
@@ -147,7 +147,7 @@ local function normalizeItem(item, index, depth, budget)
   local entry = {
     id = id,
     label = label,
-    description = displayText(item.description, MAX_DESCRIPTION),
+    description = Text.clean(item.description, MAX_DESCRIPTION),
     event = item.event,
     data = item.data,
     disabled = item.disabled == true,
@@ -161,8 +161,8 @@ local function normalizeItem(item, index, depth, budget)
     if children == nil then return nil, reason end
     entry.kind = "submenu"
     entry.items = children
-    entry.title = displayText(item.title, MAX_LABEL) or label
-    entry.value = displayText(item.value, MAX_VALUE)
+    entry.title = Text.clean(item.title, MAX_LABEL) or label
+    entry.value = Text.clean(item.value, MAX_VALUE)
     -- Resolved when the screen is pushed, not here: `update` rebuilds this list.
     entry.cursor = item.cursor
     return entry
@@ -172,8 +172,8 @@ local function normalizeItem(item, index, depth, budget)
     entry.kind = "toggle"
     entry.on = item.toggle
     entry.labels = {
-      on = displayText(item.onLabel, MAX_VALUE) or "ON",
-      off = displayText(item.offLabel, MAX_VALUE) or "OFF",
+      on = Text.clean(item.onLabel, MAX_VALUE) or "ON",
+      off = Text.clean(item.offLabel, MAX_VALUE) or "OFF",
     }
     return entry
   end
@@ -207,7 +207,7 @@ local function normalizeItem(item, index, depth, budget)
   end
 
   entry.kind = "action"
-  entry.value = displayText(item.value, MAX_VALUE)
+  entry.value = Text.clean(item.value, MAX_VALUE)
   return entry
 end
 
@@ -288,12 +288,14 @@ function Model.build(owner, generation, spec)
     return nil, "invalid_menu_id"
   end
 
-  local title = displayText(spec.title, MAX_LABEL)
+  local title = Text.clean(spec.title, MAX_LABEL)
   if title == nil or title == "" then title = owner:upper() end
 
   if spec.event ~= nil and not validName(spec.event, 96) then
     return nil, "invalid_menu_event"
   end
+
+  if not validStatus(spec.status) then return nil, "invalid_status" end
 
   if spec.data ~= nil then
     if type(spec.data) ~= "table" then return nil, "invalid_menu_data" end
@@ -354,6 +356,8 @@ end
 ---@return boolean, string|nil
 function Model.rebuild(record, spec)
   if type(spec) ~= "table" then return false, "spec_must_be_a_table" end
+  -- Checked before anything is written: a refused patch must change nothing.
+  if not validStatus(spec.status) then return false, "invalid_status" end
   local items, title = record.items, record.title
   if spec.items ~= nil then
     local budget = { nodes = 0 }
@@ -363,7 +367,7 @@ function Model.rebuild(record, spec)
     record.nodes = budget.nodes
   end
   if spec.title ~= nil then
-    title = displayText(spec.title, MAX_LABEL) or title
+    title = Text.clean(spec.title, MAX_LABEL) or title
   end
   if spec.event ~= nil then
     if not validName(spec.event, 96) then return false, "invalid_menu_event" end
