@@ -3,7 +3,7 @@
 OpxMenu = OpxMenu or {}
 
 --- Mirrors `version` in open77.lua, which no Lua code can read; a release moves both lines.
-OpxMenu.VERSION = "0.3.0"
+OpxMenu.VERSION = "0.4.0"
 
 local Text = OpxMenu.Text
 
@@ -318,6 +318,7 @@ function Model.build(owner, generation, spec)
     event = spec.event,
     data = spec.data,
     closeOnSelect = spec.closeOnSelect == true,
+    reportFocus = spec.reportFocus == true,
     items = items,
     nodes = budget.nodes,
     stack = { frame(items, title, nil, spec.cursor) },
@@ -388,6 +389,7 @@ function Model.rebuild(record, spec)
   if spec.event ~= nil then record.event = spec.event end
   if spec.data ~= nil then record.data = spec.data end
   if spec.closeOnSelect ~= nil then record.closeOnSelect = spec.closeOnSelect == true end
+  if spec.reportFocus ~= nil then record.reportFocus = spec.reportFocus == true end
 
   -- Read back off the record: only the fields the patch carried have moved.
   record.stack = rewalk(record, record.items, record.title)

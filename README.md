@@ -43,10 +43,19 @@ Every export answers `{ ok = boolean, error = string|nil }` and never raises; `e
 - Limits, all refusals rather than truncations: 200 items per level, 8 levels deep, 400 nodes in the whole tree, and a `data` table of at most 64 nodes — keys count as well as values — nested at most 4 deep.
 - A label, value or description longer than its limit is cut to it, counted in characters so a cut never splits one.
 - Escape closes the open menu, and the menu stands down whenever another surface has the keyboard.
+- `reportFocus = true` in the spec adds the `focus` action, described under Events. It is off by default and a caller that does not set it is never sent one.
 
 ## Events
 
-Every event is raised on the item's own `event` name, or the menu's where the item has none, and on `opx77:menu` beside it, so one listener can watch every menu. One payload shape for all of them, `MenuPayload` in `types.lua`: which menu, which row, and the row's current `value`. The `action` is `select`, `change`, `open`, `back` or `close`.
+Every event is raised on the item's own `event` name, or the menu's where the item has none, and on `opx77:menu` beside it, so one listener can watch every menu. One payload shape for all of them, `MenuPayload` in `types.lua`: which menu, which row, and the row's current `value`. The `action` is `select`, `change`, `open`, `back`, `focus` or `close`.
+
+### `focus`, and why it is opt-in
+
+`focus` names the row the cursor has just moved onto, so a caller can follow the keyboard rather than wait for a choice. Set `reportFocus = true` in the spec to receive it; it is off by default, and a caller that leaves it off pays nothing.
+
+- It is raised only where the cursor genuinely moved. A wrap onto the same row, a screen with one selectable row, and every other keystroke raise nothing.
+- UP and DOWN raise it. Descending into a submenu and popping back out already report themselves as `open` and `back`, and raise no `focus` beside them.
+- A held arrow key repeats every 55ms, so an opted-in handler runs at that cadence on a long list. Keep it cheap, and do not open, update or close the menu from it unless you mean to.
 
 ## Configuration
 

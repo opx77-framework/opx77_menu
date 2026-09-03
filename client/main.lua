@@ -80,6 +80,13 @@ local function emit(entry, action, extra)
   dispatch(record, entry, action, extra)
 end
 
+--- Report the row the cursor is now on, for a spec that set `reportFocus`. Called only
+--- where the cursor moved; like `select`, the handler it wakes may close the menu.
+local function reportFocus()
+  if record == nil or not record.reportFocus then return end
+  emit(Model.item(record), "focus")
+end
+
 --- True while `page:send` is failing, so a dead surface is logged once, not every frame.
 local sendFailing = false
 
@@ -303,8 +310,17 @@ local function tick(atMs)
     return
   end
 
-  if Input.poll("DOWN", atMs) and Model.move(record, 1) then dirty = true end
-  if Input.poll("UP", atMs) and Model.move(record, -1) then dirty = true end
+  if Input.poll("DOWN", atMs) and Model.move(record, 1) then
+    dirty = true
+    reportFocus()
+    if record == nil then return end
+  end
+
+  if Input.poll("UP", atMs) and Model.move(record, -1) then
+    dirty = true
+    reportFocus()
+    if record == nil then return end
+  end
 
   if Input.poll("RIGHT", atMs) then
     local entry = Model.item(record)
