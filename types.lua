@@ -2,7 +2,7 @@
 --- Type annotations for opx77_menu. Never loaded at runtime.
 
 ---@alias MenuHandle integer     unique for the life of the client session
----@alias MenuAction "select"|"change"|"open"|"back"|"close"
+---@alias MenuAction "select"|"change"|"open"|"back"|"focus"|"close"
 ---@alias MenuKind
 ---| "action"     ENTER fires it and nothing else does
 ---| "submenu"    ENTER or RIGHT descends
@@ -27,6 +27,7 @@
 ---@field cursor MenuCursor|nil  where the cursor starts. Open and push only
 ---@field status string|nil        a transient line under the list. Refused if not text
 ---@field closeOnSelect boolean|nil  close after any item fires. Default false
+---@field reportFocus boolean|nil  raise `focus` as the cursor moves. Default false
 ---@field steal boolean|nil        take over another resource's open menu
 
 --- One row. The kind is derived from the shape, never declared.
@@ -59,8 +60,8 @@
 ---@field value number|nil   default `min`
 ---@field suffix string|nil  drawn after the number, e.g. "%"
 
---- The payload of every event this resource raises. Sent to the item's `event` if it has
---- one, the menu's otherwise, and always to `opx77:menu` beside it.
+--- The payload of every event this resource raises, `focus` included. Sent to the item's
+--- `event` if it has one, the menu's otherwise, and always to `opx77:menu` beside it.
 ---@class MenuPayload
 ---@field menu string              the menu's id
 ---@field handle MenuHandle
@@ -143,6 +144,7 @@
 ---@field event string|nil
 ---@field data table|nil
 ---@field closeOnSelect boolean
+---@field reportFocus boolean
 ---@field items MenuEntry[]
 ---@field nodes integer
 ---@field stack MenuFrame[]
