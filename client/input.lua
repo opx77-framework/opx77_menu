@@ -47,8 +47,10 @@ local function attachPolling()
   if input == nil or type(input.isDown) ~= "function" then
     return false, "no_is_down"
   end
-  -- `isDown` answers `false, "permission_denied:..."` rather than raising.
-  local _, refusal = input.isDown(KEYS.SELECT)
+  -- `isDown` answers `false, "permission_denied:..."` rather than raising, but a raise here
+  -- would abandon the resource start that calls this, before the surface is created.
+  local probed, answer, refusal = pcall(input.isDown, KEYS.SELECT)
+  if not probed then return false, tostring(answer) end
   if refusal ~= nil then return false, tostring(refusal) end
   for index = 1, #ACTIONS do
     local action = ACTIONS[index]
@@ -92,9 +94,7 @@ function Input.captured()
   return isCaptured() == true
 end
 
---- Record the current physical state without firing anything, so a key pressed
---- elsewhere cannot leak into the menu.
-function Input.prime()
+local function primeAll()
   for index = 1, #ACTIONS do
     local action = ACTIONS[index]
     local entry = state[action]
@@ -103,6 +103,13 @@ function Input.prime()
     entry.suppressed = down
     entry.nextAtMs = 0
   end
+end
+
+--- Record the current physical state without firing anything, so a key pressed
+--- elsewhere cannot leak into the menu.
+function Input.prime()
+  -- Guarded: the `open` export reaches this, outside the input thread's own pcall.
+  pcall(primeAll)
 end
 
 --- True on the down-transition, then on the auto-repeat cadence. A key already down

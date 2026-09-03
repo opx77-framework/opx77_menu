@@ -3,9 +3,8 @@
 OpxMenu = OpxMenu or {}
 
 --- Mirrors `version` in open77.lua, which no Lua code can read; a release moves both lines.
-OpxMenu.VERSION = "0.2.0"
+OpxMenu.VERSION = "0.3.0"
 
-local Config = OPX_MENU_CONFIG
 local Text = OpxMenu.Text
 
 local Model = {}
@@ -37,8 +36,13 @@ local function validName(value, maximum)
     and value:match("^[%w_:%-%.]+$") ~= nil
 end
 
---- Sanitiser, shared with client/main.lua's status line.
-Model.display = Text.clean
+--- Rows drawn at once. Resolved once from the operator's config: a value that is not a
+--- whole number of at least one would silently draw an empty window on every frame.
+local VISIBLE_ROWS = 9
+do
+  local rows = OPX_MENU_CONFIG.VISIBLE_ROWS
+  if finite(rows) and rows >= 1 then VISIBLE_ROWS = math.floor(rows) end
+end
 
 --- Text the status line accepts. A table would sanitise to nil and silently clear the
 --- line, so every path that writes it refuses one.
@@ -328,8 +332,9 @@ end
 ---@param title string
 ---@return MenuFrame[]
 local function rewalk(record, items, title)
-  -- No cursor here: `spec.cursor` says where a menu OPENS, not where it moves.
-  local stack = { frame(items, title, nil) }
+  -- Not `spec.cursor`: that says where a menu OPENS, not where it moves.
+  local root = math.min(record.stack[1].index, #items)
+  local stack = { frame(items, title, nil, root) }
   local cursor = items
   for depth = 2, #record.stack do
     local previous = record.stack[depth]
@@ -339,14 +344,10 @@ local function rewalk(record, items, title)
       if entry.id == previous.id and entry.kind == "submenu" then found = entry break end
     end
     if found == nil then break end
-    local child = frame(found.items, found.title, found.id)
     -- Re-settled, not clamped: the update may have disabled the row it sits on.
-    child.index = cursorIndex(found.items, previous.index)
-    stack[#stack + 1] = child
+    stack[#stack + 1] = frame(found.items, found.title, found.id, previous.index)
     cursor = found.items
   end
-  -- Through `cursorIndex` too: `Model.settle` only reaches the top frame.
-  stack[1].index = cursorIndex(items, math.min(record.stack[1].index, #items))
   return stack
 end
 
@@ -356,33 +357,40 @@ end
 ---@return boolean, string|nil
 function Model.rebuild(record, spec)
   if type(spec) ~= "table" then return false, "spec_must_be_a_table" end
-  -- Checked before anything is written: a refused patch must change nothing.
+  -- Every field is checked before any is written: a refused patch must change nothing.
   if not validStatus(spec.status) then return false, "invalid_status" end
-  local items, title = record.items, record.title
+
+  local items, nodes
   if spec.items ~= nil then
     local budget = { nodes = 0 }
     local built, reason = normalizeItems(spec.items, 1, budget)
     if built == nil then return false, reason end
-    items = built
-    record.nodes = budget.nodes
+    items, nodes = built, budget.nodes
   end
-  if spec.title ~= nil then
-    title = Text.clean(spec.title, MAX_LABEL) or title
+
+  local title
+  if spec.title ~= nil then title = Text.clean(spec.title, MAX_LABEL) end
+
+  if spec.event ~= nil and not validName(spec.event, 96) then
+    return false, "invalid_menu_event"
   end
-  if spec.event ~= nil then
-    if not validName(spec.event, 96) then return false, "invalid_menu_event" end
-    record.event = spec.event
-  end
+
   if spec.data ~= nil then
     if type(spec.data) ~= "table" then return false, "invalid_menu_data" end
     if not fitsInPayload(spec.data, 1, { data = 0 }) then return false, "menu_data_too_large" end
-    record.data = spec.data
   end
+
+  if items ~= nil then
+    record.items = items
+    record.nodes = nodes
+  end
+  if title ~= nil then record.title = title end
+  if spec.event ~= nil then record.event = spec.event end
+  if spec.data ~= nil then record.data = spec.data end
   if spec.closeOnSelect ~= nil then record.closeOnSelect = spec.closeOnSelect == true end
 
-  record.items = items
-  record.title = title
-  record.stack = rewalk(record, items, title)
+  -- Read back off the record: only the fields the patch carried have moved.
+  record.stack = rewalk(record, record.items, record.title)
   return true
 end
 
@@ -556,7 +564,7 @@ end
 function Model.view(record)
   local top = Model.frame(record)
   if top == nil then return nil end
-  local rows = Config.VISIBLE_ROWS
+  local rows = VISIBLE_ROWS
   local total = #top.items
   local first = windowFirst(top.index, total, rows)
   local window = {}

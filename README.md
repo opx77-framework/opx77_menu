@@ -27,19 +27,19 @@ The exports are client-side only: a server resource calls them from its own clie
 | `open` | open a menu, refusing the spec whole if any row is malformed |
 | `update` | replace the rows of a menu you own |
 | `close` | close it |
-| `status` | write a transient line under the list |
-| `keys` | the keys that drive the menu, for a caller printing its own hint |
 | `state` | whether a menu is open and whether it is yours |
+| `setStatus` | write the transient line under the list |
+| `keys` | the keys that drive the menu, for a caller printing its own hint |
 
 Every export answers `{ ok = boolean, error = string|nil }` and never raises; `error` is a stable code, never player-facing text. `open` adds `handle`, `id` and `nodes`, the size of the tree it built. Types for every spec, payload and response are in `types.lua`.
 
 ### Rules a caller needs
 
 - One menu at a time. `open` answers `menu_busy` when another resource owns the open one, unless the spec sets `steal = true`.
-- `update`, `close` and `status` answer `not_owner` unless the open menu is yours.
+- `update`, `close` and `setStatus` answer `not_owner` unless the open menu is yours.
 - `state` reports only `open` and `mine` for a menu you do not own.
 - The menu closes itself when its owner stops or reloads, within a second.
-- The `status` line clears itself after six seconds; `status(nil)` clears it now. A `status`, on the export or in a spec, is text or a number: anything else answers `invalid_status` rather than silently clearing the line.
+- The status line clears itself after six seconds; `setStatus(nil)` clears it now. A status, from `setStatus` or from a spec's `status` field, is text or a number: anything else answers `invalid_status` rather than silently clearing the line.
 - Limits, all refusals rather than truncations: 200 items per level, 8 levels deep, 400 nodes in the whole tree, and a `data` table of at most 64 nodes — keys count as well as values — nested at most 4 deep.
 - A label, value or description longer than its limit is cut to it, counted in characters so a cut never splits one.
 - Escape closes the open menu, and the menu stands down whenever another surface has the keyboard.
