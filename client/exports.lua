@@ -105,11 +105,11 @@ exports("state", function()
   return snapshot
 end)
 
---- Write the transient line under the list; `status(nil)` clears it now.
+--- Write the transient line under the list; `setStatus(nil)` clears it now.
 ---@param text string|nil  cleared automatically after six seconds
 ---@param ok boolean|nil  false marks a failure, which changes its colour
 ---@return MenuResponse  "not_owner" unless the open menu belongs to the caller
-exports("status", function(text, ok)
+exports("setStatus", function(text, ok)
   local gone = unavailable()
   if gone then return gone end
   local owner, generation = caller()

@@ -3,6 +3,7 @@
 OpxMenu = OpxMenu or {}
 
 local Config = OPX_MENU_CONFIG
+local Text = OpxMenu.Text
 local Model = OpxMenu.model
 local Input = OpxMenu.input
 
@@ -203,7 +204,7 @@ end
 ---@return boolean
 function Runtime.setStatus(text, ok)
   if record == nil then return false end
-  local clean = text ~= nil and Model.display(text, MAX_STATUS) or nil
+  local clean = text ~= nil and Text.clean(text, MAX_STATUS) or nil
   if clean == nil or clean == "" then
     if record.status == nil then return true end
     record.status = nil
